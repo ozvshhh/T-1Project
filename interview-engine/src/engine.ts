@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import {
   DEFAULT_LIMITS,
+  END_REASON_LABEL,
   FIELD_LABEL,
   INTERVIEWER_FIELDS,
   INTERVIEWER_LABEL,
@@ -24,9 +25,11 @@ import type {
   AskedQuestion,
   CheckField,
   CheckStatus,
+  CoverLetterSource,
   CoverLetterSuggestion,
   EndReason,
   FallbackEvent,
+  FieldState,
   InterviewerId,
   InterviewSession,
   MainQuestion,
@@ -50,6 +53,8 @@ export interface EngineOptions {
   store: SessionStore;
   /** null이면 AI 없이 기본 질문으로만 진행한다(키가 없을 때 앱이 계속 동작하도록). */
   llm: LlmClient | null;
+  /** 앱의 이력서·자기소개서 저장소. 있으면 자기소개서 id로 시작하고, 승인한 수정 제안을 그 자기소개서에 저장한다. */
+  coverLetters?: CoverLetterSource | null;
   limits?: Partial<Limits>;
   now?: () => number;
   random?: () => number;
@@ -69,11 +74,24 @@ export interface CurrentQuestionView {
   fallback: boolean;
 }
 
+export interface HistoryItem {
+  questionId: string;
+  interviewer: InterviewerId;
+  interviewerLabel: string;
+  kind: QuestionKind;
+  question: string;
+  answer: string | null;
+}
+
 export interface InterviewView {
   sessionId: string;
   status: InterviewSession['status'];
   endReason: EndReason | null;
+  /** 예: '사용자 종료' */
+  endReasonLabel: string | null;
   current: CurrentQuestionView | null;
+  /** 지금까지의 질문·답변 기록(면접 화면에 쌓아 보여 줄 것) */
+  history: HistoryItem[];
   questionCount: number;
   maxQuestions: number;
   elapsedMs: number;
@@ -101,9 +119,49 @@ export interface ResultFieldItem {
   answerIds: string[];
 }
 
+/** 면접 기록 목록의 한 줄 */
+export interface InterviewSummary {
+  sessionId: string;
+  status: InterviewSession['status'];
+  endReason: EndReason | null;
+  endReasonLabel: string | null;
+  coverLetterId: string | null;
+  /** 자기소개서 앞부분(목록 표시용) */
+  coverLetterPreview: string;
+  questionCount: number;
+  answerCount: number;
+  pendingSuggestions: number;
+  createdAt: string;
+  endedAt: string | null;
+}
+
+/** 시드용 끝난 면접(S6). 질문·답변·수정 제안 내용은 앱의 시드 코드가 정한다. */
+export interface SeedFinishedInput {
+  /** 고정 id. 이미 있으면 만들지 않는다(앱을 다시 켜도 하나만). */
+  id: string;
+  userId: string;
+  resume: string;
+  coverLetter: string;
+  coverLetterId?: string | null;
+  qa: {
+    interviewer: InterviewerId;
+    purpose: string;
+    fields: CheckField[];
+    question: string;
+    answer: string;
+    /** 이 답변으로 설명된 항목 */
+    explained?: CheckField[];
+  }[];
+  /** answerIndex: 근거가 된 qa의 순번(0부터). original은 coverLetter에 그대로 있어야 한다. */
+  suggestions?: { original: string; revised: string; reason: string; answerIndex: number }[];
+  endReason?: EndReason;
+}
+
 export interface InterviewResult {
   sessionId: string;
   endReason: EndReason | null;
+  endReasonLabel: string | null;
+  coverLetterId: string | null;
   log: ResultLogItem[];
   /** 면접에서 설명된 항목 */
   explained: ResultFieldItem[];
@@ -125,6 +183,7 @@ const STATUS_PRIORITY: Record<CheckStatus, number> = {
 export class InterviewEngine {
   private readonly store: SessionStore;
   private readonly llm: LlmClient | null;
+  private readonly coverLetters: CoverLetterSource | null;
   private readonly limits: Limits;
   private readonly now: () => number;
   private readonly random: () => number;
@@ -134,6 +193,7 @@ export class InterviewEngine {
   constructor(opts: EngineOptions) {
     this.store = opts.store;
     this.llm = opts.llm;
+    this.coverLetters = opts.coverLetters ?? null;
     this.limits = { ...DEFAULT_LIMITS, ...opts.limits };
     this.now = opts.now ?? Date.now;
     this.random = opts.random ?? Math.random;
@@ -141,11 +201,31 @@ export class InterviewEngine {
     this.recentOtherAnswers = opts.recentOtherAnswers ?? 4;
   }
 
-  /** 면접 시작: 본질문 4개 생성(AI 1회) → 순서 랜덤 → 첫 질문 */
-  async start(input: { userId: string; resume: string; coverLetter: string }): Promise<InterviewView> {
-    const resume = (input.resume ?? '').trim();
-    const coverLetter = (input.coverLetter ?? '').trim();
+  /**
+   * 면접 시작: 본질문 4개 생성(AI 1회) → 순서 랜덤 → 첫 질문.
+   * coverLetterId를 주면 앱의 저장소(coverLetters)에서 이력서·자기소개서를 읽는다(F5).
+   * 저장소 없이 글을 직접 넘길 수도 있다(테스트·임시용).
+   */
+  async start(input: {
+    userId: string;
+    coverLetterId?: string | null;
+    resume?: string;
+    coverLetter?: string;
+  }): Promise<InterviewView> {
     if (!input.userId) throw new InterviewError('invalid_input', '로그인이 필요해요.');
+    let resume = (input.resume ?? '').trim();
+    let coverLetter = (input.coverLetter ?? '').trim();
+    const coverLetterId = input.coverLetterId?.trim() || null;
+    if (coverLetterId) {
+      if (!this.coverLetters) {
+        throw new InterviewError('invalid_input', '자기소개서 저장소가 연결되지 않았어요.');
+      }
+      const body = await this.coverLetters.getCoverLetter(input.userId, coverLetterId);
+      if (body === null) throw new InterviewError('not_found', '자기소개서를 찾을 수 없어요.');
+      coverLetter = body.trim();
+      resume = (await this.coverLetters.getResumeText(input.userId)).trim();
+      if (!coverLetter) throw new InterviewError('invalid_input', '자기소개서 본문이 비어 있어요.');
+    }
     if (!resume && !coverLetter) {
       throw new InterviewError('invalid_input', '이력서나 자소서를 먼저 입력해 주세요.');
     }
@@ -167,6 +247,7 @@ export class InterviewEngine {
       version: 1,
       resume,
       coverLetter,
+      coverLetterId,
       status: 'in_progress',
       endReason: null,
       createdAt: new Date(nowMs).toISOString(),
@@ -189,6 +270,114 @@ export class InterviewEngine {
 
   async get(sessionId: string, userId: string): Promise<InterviewView> {
     return this.view(await this.load(sessionId, userId));
+  }
+
+  /** 내 면접 기록 목록, 최근 것부터 (F8 지난 결과 다시 보기, S6 '면접 기록') */
+  async list(userId: string, limit = 50): Promise<InterviewSummary[]> {
+    if (!userId) throw new InterviewError('invalid_input', '로그인이 필요해요.');
+    const sessions = await this.store.listByUser(userId, Math.min(Math.max(limit, 1), 100));
+    return sessions.map((s) => ({
+      sessionId: s.id,
+      status: s.status,
+      endReason: s.endReason,
+      endReasonLabel: s.endReason ? END_REASON_LABEL[s.endReason] : null,
+      coverLetterId: s.coverLetterId ?? null,
+      coverLetterPreview: s.coverLetter.replace(/\s+/g, ' ').slice(0, 60),
+      questionCount: s.asked.length,
+      answerCount: s.answers.length,
+      pendingSuggestions: (s.suggestions ?? []).filter((x) => x.status === 'pending').length,
+      createdAt: s.createdAt,
+      endedAt: s.endedAt,
+    }));
+  }
+
+  /**
+   * 시드용 끝난 면접을 만든다(AI 호출 없음). 같은 id가 이미 있으면 아무것도 하지 않고 false.
+   * 앱이 처음 뜰 때 시드 계정에 대해 부른다(S6).
+   */
+  async seedFinished(input: SeedFinishedInput): Promise<boolean> {
+    if (await this.store.get(input.id)) return false;
+    if (!input.userId || input.qa.length === 0) {
+      throw new InterviewError('invalid_input', '시드 면접에는 사용자와 질문·답변이 하나 이상 필요해요.');
+    }
+    const at = this.isoNow();
+    const nowMs = this.now();
+    const mainQuestions: MainQuestion[] = [];
+    const asked: AskedQuestion[] = [];
+    const answers: Answer[] = [];
+    const checks: InterviewSession['checks'] = {};
+    input.qa.forEach((qa, i) => {
+      const allowed = INTERVIEWER_FIELDS[qa.interviewer];
+      const fields = unique(qa.fields.filter((f) => allowed.includes(f)));
+      if (fields.length === 0) throw new InterviewError('invalid_input', `시드 질문 ${i + 1}의 확인 항목이 면접관과 맞지 않아요.`);
+      const mainId = `M${i + 1}`;
+      const qid = `Q${i + 1}`;
+      const aid = `A${i + 1}`;
+      mainQuestions.push({
+        id: mainId,
+        interviewer: qa.interviewer,
+        purpose: qa.purpose,
+        fields,
+        basisSentence: null,
+        text: qa.question,
+        fallback: false,
+      });
+      asked.push({
+        id: qid,
+        mainId,
+        interviewer: qa.interviewer,
+        kind: 'main',
+        text: qa.question,
+        reason: null,
+        targetField: null,
+        basisAnswerId: null,
+        conflictingAnswerId: null,
+        fallback: false,
+        askedAt: at,
+      });
+      answers.push({ id: aid, questionId: qid, text: qa.answer, source: 'text', answeredAt: at });
+      const states: Partial<Record<CheckField, FieldState>> = {};
+      checks[mainId] = states;
+      for (const f of fields) {
+        const explained = qa.explained?.includes(f) ?? false;
+        states[f] = {
+          status: explained ? 'explained' : 'needs_more',
+          rephrased: false,
+          answerIds: [aid],
+        };
+      }
+    });
+    const suggestions: CoverLetterSuggestion[] = (input.suggestions ?? []).map((s, i) => {
+      if (!input.coverLetter.includes(s.original)) {
+        throw new InterviewError('invalid_input', `시드 수정 제안 ${i + 1}의 원래 문장이 자기소개서에 없어요.`);
+      }
+      const answer = answers[s.answerIndex];
+      if (!answer) throw new InterviewError('invalid_input', `시드 수정 제안 ${i + 1}의 근거 답변이 없어요.`);
+      return { id: `S${i + 1}`, original: s.original, revised: s.revised, reason: s.reason, answerId: answer.id, status: 'pending' };
+    });
+    await this.store.create({
+      id: input.id,
+      userId: input.userId,
+      version: 1,
+      resume: input.resume,
+      coverLetter: input.coverLetter,
+      coverLetterId: input.coverLetterId ?? null,
+      status: 'ended',
+      endReason: input.endReason ?? 'user_ended',
+      createdAt: at,
+      startedAtMs: nowMs,
+      endedAt: at,
+      mainQuestions,
+      currentMainIndex: mainQuestions.length - 1,
+      followUpsOnCurrent: 0,
+      asked,
+      answers,
+      checks,
+      skippedMainIds: [],
+      fallbackEvents: [],
+      suggestions,
+    });
+    return true;
   }
 
   /**
@@ -319,6 +508,8 @@ export class InterviewEngine {
     return {
       sessionId: session.id,
       endReason: session.endReason,
+      endReasonLabel: session.endReason ? END_REASON_LABEL[session.endReason] : null,
+      coverLetterId: session.coverLetterId ?? null,
       log,
       explained: fields.filter((f) => f.status === 'explained'),
       toImprove,
@@ -328,29 +519,43 @@ export class InterviewEngine {
     };
   }
 
-  /** 수정 제안 승인: 자소서의 해당 문장을 바꾸고 바뀐 자소서를 돌려준다. 앱이 자기 자소서 저장소에도 반영한다. */
+  /**
+   * 수정 제안 승인(F8): 자기소개서의 해당 문장을 바꾼다.
+   * 면접이 자기소개서 id로 시작됐고 저장소가 연결돼 있으면, 지금 저장된 자기소개서 본문에 적용해 그곳에 저장한다.
+   * 바뀐 자기소개서 전문을 돌려준다.
+   */
   async approveSuggestion(
     sessionId: string,
     userId: string,
     suggestionId: string,
-  ): Promise<{ coverLetter: string; suggestion: CoverLetterSuggestion }> {
+  ): Promise<{ coverLetter: string; coverLetterId: string | null; saved: boolean; suggestion: CoverLetterSuggestion }> {
     const session = await this.load(sessionId, userId);
     const suggestion = session.suggestions?.find((s) => s.id === suggestionId);
     if (!suggestion) throw new InterviewError('not_found', '수정 제안을 찾을 수 없어요.');
     if (suggestion.status !== 'pending') {
       throw new InterviewError('conflict', '이미 처리한 수정 제안이에요.');
     }
-    if (!session.coverLetter.includes(suggestion.original)) {
+
+    const linked = Boolean(session.coverLetterId && this.coverLetters);
+    let current = session.coverLetter;
+    if (linked) {
+      const stored = await this.coverLetters!.getCoverLetter(userId, session.coverLetterId!);
+      if (stored === null) throw new InterviewError('not_found', '자기소개서를 찾을 수 없어요. 삭제되었을 수 있어요.');
+      current = stored;
+    }
+
+    if (!current.includes(suggestion.original)) {
       suggestion.status = 'stale';
-    } else {
-      session.coverLetter = session.coverLetter.replace(suggestion.original, suggestion.revised);
-      suggestion.status = 'applied';
+      await this.persist(session);
+      throw new InterviewError('conflict', '자기소개서의 원래 문장이 바뀌어 적용할 수 없어요.');
     }
+
+    const updated = current.replace(suggestion.original, suggestion.revised);
+    if (linked) await this.coverLetters!.updateCoverLetter(userId, session.coverLetterId!, updated);
+    session.coverLetter = updated;
+    suggestion.status = 'applied';
     await this.persist(session);
-    if (suggestion.status === 'stale') {
-      throw new InterviewError('conflict', '자소서의 원래 문장이 바뀌어 적용할 수 없어요.');
-    }
-    return { coverLetter: session.coverLetter, suggestion };
+    return { coverLetter: updated, coverLetterId: session.coverLetterId ?? null, saved: linked, suggestion };
   }
 
   async rejectSuggestion(sessionId: string, userId: string, suggestionId: string): Promise<CoverLetterSuggestion> {
@@ -596,10 +801,20 @@ export class InterviewEngine {
     const elapsedMs = Math.min(this.elapsed(session), this.limits.maxDurationMs);
     const q = session.status === 'in_progress' ? session.asked.at(-1) : undefined;
     const main = q ? session.mainQuestions.find((m) => m.id === q.mainId) : undefined;
+    const history: HistoryItem[] = session.asked.map((asked) => ({
+      questionId: asked.id,
+      interviewer: asked.interviewer,
+      interviewerLabel: INTERVIEWER_LABEL[asked.interviewer],
+      kind: asked.kind,
+      question: asked.text,
+      answer: session.answers.find((a) => a.questionId === asked.id)?.text ?? null,
+    }));
     return {
       sessionId: session.id,
       status: session.status,
       endReason: session.endReason,
+      endReasonLabel: session.endReason ? END_REASON_LABEL[session.endReason] : null,
+      history,
       current:
         q && main
           ? {

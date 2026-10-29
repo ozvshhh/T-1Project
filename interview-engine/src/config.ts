@@ -1,4 +1,12 @@
-import type { CheckField, InterviewerId } from './types.js';
+import type { CheckField, EndReason, InterviewerId } from './types.js';
+
+/** 결과 화면에 보여 줄 종료 사유 (S5: '사용자 종료') */
+export const END_REASON_LABEL: Record<EndReason, string> = {
+  completed: '모든 질문 완료',
+  user_ended: '사용자 종료',
+  question_limit: '질문 수 한도',
+  time_limit: '시간 한도',
+};
 
 export interface Limits {
   mainPerInterviewer: number;

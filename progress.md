@@ -41,6 +41,7 @@ Agent가 서비스 저장소 루트의 `progress.md`로 복사해 이어 쓴다(
 - 백엔드: NestJS / DB: MongoDB / AI 모델: `openai/gpt-6.1-terra` (Gateway 모델 목록에서 ID 확인, 입력 $1·출력 $5 per 100만 토큰, 추론 강도 기본 low)
 - 자세한 설계: docs/interview-design.md
 - 구현(2026-10-29): `interview-engine/` — 면접 진행 로직(`src/`)과 NestJS 모듈(`nest/`, `/api/interviews`). 단위·API 테스트 42개 통과, 타입 검사 통과. 실제 MongoDB 연결·실제 AI Gateway 호출은 아직 확인 안 함(Docker 꺼져 있음, 키 없음)
+- 명세 맞춤(2026-10-29, feature/interview-spec-align): 면접 기록 목록 `GET /api/interviews`(F8·S6), 자기소개서 id로 시작·승인 시 그 자기소개서에 저장(`CoverLetterSource`, F5·F8), S6용 끝난 면접 시드 `seedFinished`, `DATABASE_URL` 지원, 종료 사유 이름표('사용자 종료', S5), 면접 중 기록 `history`(F6). 테스트 55개 통과
 
 ### 합의가 필요한 제안 (팀 합의 전에는 problem.yaml을 고치지 않음)
 

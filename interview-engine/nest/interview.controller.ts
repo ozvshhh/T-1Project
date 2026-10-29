@@ -29,6 +29,9 @@ export const CurrentUserId = createParamDecorator((_: unknown, ctx: ExecutionCon
 });
 
 const StartBody = z.object({
+  /** 내 자기소개서 id (자기소개서 저장소가 연결돼 있을 때). */
+  coverLetterId: z.string().min(1).optional(),
+  /** 저장소 없이 글을 직접 넘길 때(테스트·임시용) */
   resume: z.string().default(''),
   coverLetter: z.string().default(''),
 });
@@ -53,11 +56,17 @@ function parse<T>(schema: z.ZodType<T>, body: unknown): T {
 export class InterviewController {
   constructor(@Inject(INTERVIEW_ENGINE) private readonly engine: InterviewEngine) {}
 
-  /** 면접 시작 → 첫 질문 */
+  /** 내 면접 기록 목록, 최근 것부터 (S6 '면접 기록') */
+  @Get()
+  list(@CurrentUserId() userId: string) {
+    return this.engine.list(userId);
+  }
+
+  /** 면접 시작 → 첫 질문. 본문: { coverLetterId } 또는 { resume, coverLetter } */
   @Post()
   start(@CurrentUserId() userId: string, @Body() body: unknown) {
-    const { resume, coverLetter } = parse(StartBody, body);
-    return this.engine.start({ userId, resume, coverLetter });
+    const { coverLetterId, resume, coverLetter } = parse(StartBody, body);
+    return this.engine.start({ userId, coverLetterId, resume, coverLetter });
   }
 
   /** 지금 상태(새로고침) */

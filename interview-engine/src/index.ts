@@ -11,6 +11,9 @@ export { InterviewEngine, InterviewError } from './engine.js';
 export type {
   EngineOptions,
   InterviewView,
+  InterviewSummary,
+  HistoryItem,
+  SeedFinishedInput,
   CurrentQuestionView,
   InterviewResult,
   ResultLogItem,

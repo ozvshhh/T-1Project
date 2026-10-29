@@ -8,12 +8,14 @@ export class ConflictError extends Error {
   }
 }
 
-/** 면접 세션 저장소. MongoDB·PostgreSQL 등은 이 세 함수만 구현하면 붙는다. */
+/** 면접 세션 저장소. MongoDB·PostgreSQL 등은 이 네 함수만 구현하면 붙는다. */
 export interface SessionStore {
   create(session: InterviewSession): Promise<void>;
   get(id: string): Promise<InterviewSession | null>;
   /** expectedVersion과 저장된 version이 다르면 ConflictError */
   save(session: InterviewSession, expectedVersion: number): Promise<void>;
+  /** 그 사용자의 면접, 최근 것부터 limit개 */
+  listByUser(userId: string, limit: number): Promise<InterviewSession[]>;
 }
 
 /** 테스트·로컬 개발용. 서버를 재시작하면 사라진다. */
@@ -36,5 +38,13 @@ export class MemorySessionStore implements SessionStore {
     const current = JSON.parse(raw) as InterviewSession;
     if (current.version !== expectedVersion) throw new ConflictError();
     this.data.set(session.id, JSON.stringify(session));
+  }
+
+  async listByUser(userId: string, limit: number): Promise<InterviewSession[]> {
+    return [...this.data.values()]
+      .map((raw) => JSON.parse(raw) as InterviewSession)
+      .filter((s) => s.userId === userId)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .slice(0, limit);
   }
 }
