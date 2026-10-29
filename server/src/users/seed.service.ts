@@ -2,10 +2,9 @@ import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import * as bcrypt from 'bcryptjs';
 import { Model } from 'mongoose';
+import { BCRYPT_ROUNDS } from '../auth/auth.config';
 import { User } from './user.schema';
 
-// bcrypt 비용 인자. 10이면 기동 지연 없이 해시 강도를 확보한다.
-const BCRYPT_ROUNDS = 10;
 const MONGO_DUPLICATE_KEY = 11000;
 
 // 주최 측은 빈 DB에서 앱을 띄운 뒤 SEED_USER_EMAIL/SEED_USER_PASSWORD로 바로 로그인하므로 기동 시 계정을 보장한다.

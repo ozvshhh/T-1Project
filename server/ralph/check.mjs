@@ -42,7 +42,7 @@ if (cmd === 'load') {
   if (fail) console.log(`fix ${fail.id}`);
   else if (fixed) console.log(`confirm ${fixed.id}`);
   else if (todo) console.log(`verify ${todo.id}`);
-  else if ((l.sweeps || 0) < 2 && l.claims.some((c) => c.spec === l.stage)) console.log('sweep ALL');   // 단계 끝 재검증(다른 눈)
+  else if ((l.sweeps || 0) < 1 && l.claims.some((c) => c.spec === l.stage)) console.log('sweep ALL');   // 단계 끝 재검증(다른 눈). 토큰 절약으로 1회(2026-10-30)
   else console.log('COMPLETE');
 } else if (cmd === 'after') {
   const [role, id] = [a1, a2];
