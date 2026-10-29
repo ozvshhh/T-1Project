@@ -33,6 +33,7 @@ Agent가 서비스 저장소 루트의 `progress.md`로 복사해 이어 쓴다(
 - 질문은 TTS로 읽음. 답은 음성·글자 둘 다(음성은 전사 확인·수정 가능)
 - DB: MongoDB
 - 자세한 설계: docs/interview-design.md
+- 구현(2026-10-29): `interview-engine/` — 면접 진행 로직 모듈(TypeScript, 서버 프레임워크·DB에 묶이지 않음). 단위 테스트 35개 통과, 타입 검사 통과. 실제 MongoDB 연결·실제 AI Gateway 호출은 아직 확인 안 함(Docker 꺼져 있음, 키·모델 미정)
 
 ### 합의가 필요한 제안 (팀 합의 전에는 problem.yaml을 고치지 않음)
 
