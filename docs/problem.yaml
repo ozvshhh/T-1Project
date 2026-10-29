@@ -1,0 +1,33 @@
+# T1 팀 문제정의. 종이 캔버스(2026-10-29, 팀원 JW·TK·HN·SG·HE)에서 옮김.
+# 종이에 없는 내용은 null 또는 []로 둔다. 종이가 채워지면 이어서 옮긴다.
+
+statement: null
+canvas:
+  context: |-
+    시간: 4학년 2학기, 졸업예정자, 취준생
+    장소: 학교, 자취방, 부트캠프 ... 어디서든
+    반복양상: 취준생 취업시즌 → 채용공고 → 면접 → 결과확인
+      ① 채용공고 확인
+      ② 지원하기 ← 템플릿에 맞게 지원서 작성 (난사 / 직무적격) 특정회사(대기업·공기업·스타트업·중견)
+      ③ 서류 검토 → 2. 인적성/AI면접/코테 → 3. 면접(임원, 기술...)
+    특징: 채용서류에 몰린다. 병렬적으로 진행됨. 매일 수요가 존재.
+  customer: |-
+    구직자
+    회사
+  root_problem: null
+  impact:
+    feeling: null
+    measurable: null
+  alternatives: []
+personas: []
+experiences: []
+sources: []
+five_whys:
+  symptom: null
+  whys: []
+solution_paths: []
+insight:
+  claim: null
+  evidence: null
+  design_decision: null
+features: []
