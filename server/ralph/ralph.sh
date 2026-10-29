@@ -7,7 +7,7 @@ CLAIMS=$(node $R/check.mjs count)
 DEFAULT_MAX=$(( CLAIMS * 4 + 2 ))              # 위키 관찰: 상한은 주장 수 × 3보다 크게
 MAX="${1:-$DEFAULT_MAX}"
 mkdir -p $R/logs $R/reviews $R/confirms
-echo "주장 $CLAIMS개, 최대 반복 $MAX"
+echo "주장 ${CLAIMS}개, 최대 반복 ${MAX}"
 
 COMMON=(Read Glob Grep "Bash(ls:*)" "Bash(cat:*)" "Bash(npm run:*)" "Bash(npm test:*)" "Bash(npx jest:*)" "Bash(git status:*)" "Bash(git diff:*)" "Bash(git log:*)" "Bash(git show:*)")
 VERIFY_TOOLS=("${COMMON[@]}" "Write($R/reviews/*)" "Edit($R/reviews/*)" "Bash(docker compose:*)" "Bash(curl:*)" "Bash(sleep:*)")
