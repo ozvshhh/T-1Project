@@ -1,5 +1,6 @@
 import type { JsonRequest, LlmClient } from '../src/llm.js';
 import type { MainQuestionsOutput, SuggestionsOutput, TurnOutput } from '../src/schemas.js';
+import type { CoverLetterSource } from '../src/types.js';
 
 type Handler = {
   main_questions?: (req: JsonRequest<unknown>) => MainQuestionsOutput | Promise<MainQuestionsOutput>;
@@ -69,6 +70,24 @@ export const nextMain = (): TurnOutput => ({
   reason: '확인 목적 충족',
   question: null,
 });
+
+/** 앱의 이력서·자기소개서 저장소 흉내 */
+export class FakeCoverLetters implements CoverLetterSource {
+  resumes = new Map<string, string>();
+  letters = new Map<string, { userId: string; body: string }>();
+  async getResumeText(userId: string) {
+    return this.resumes.get(userId) ?? '';
+  }
+  async getCoverLetter(userId: string, id: string) {
+    const l = this.letters.get(id);
+    return l && l.userId === userId ? l.body : null;
+  }
+  async updateCoverLetter(userId: string, id: string, body: string) {
+    const l = this.letters.get(id);
+    if (!l || l.userId !== userId) throw new Error('not found');
+    l.body = body;
+  }
+}
 
 /** 시간을 직접 움직일 수 있는 시계 */
 export function clock(start = Date.UTC(2026, 9, 29, 12, 0, 0)) {

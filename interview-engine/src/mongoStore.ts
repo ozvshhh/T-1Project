@@ -32,4 +32,9 @@ export class MongoSessionStore implements SessionStore {
     const result = await this.col.replaceOne({ _id: session.id, version: expectedVersion }, { ...session });
     if (result.matchedCount === 0) throw new ConflictError();
   }
+
+  async listByUser(userId: string, limit: number): Promise<InterviewSession[]> {
+    const docs = await this.col.find({ userId }).sort({ createdAt: -1 }).limit(limit).toArray();
+    return docs.map(({ _id, ...session }) => session);
+  }
 }

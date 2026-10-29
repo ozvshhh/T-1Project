@@ -36,6 +36,8 @@ describe.skipIf(!url)('MongoSessionStore (실제 MongoDB)', () => {
     expect(saved?.answers).toHaveLength(1);
     expect(saved?.status).toBe('ended');
     expect(saved && '_id' in saved).toBe(false);
+    const list = await engine.list('u1');
+    expect(list[0]?.sessionId).toBe(v.sessionId);
   });
 
   it('같은 버전으로 두 번 저장하면 두 번째는 ConflictError', async () => {
