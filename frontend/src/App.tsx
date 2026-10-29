@@ -1,6 +1,7 @@
 import { Route, Routes } from 'react-router-dom'
 import { RequireAuth, RequireUnlocked } from '@/components/guards'
 import Layout from '@/components/Layout'
+import CoverLetterDetail from '@/pages/CoverLetterDetail'
 import CoverLetterNew from '@/pages/CoverLetterNew'
 import CoverLetterPaste from '@/pages/CoverLetterPaste'
 import CoverLetterWrite from '@/pages/CoverLetterWrite'
@@ -29,6 +30,7 @@ export default function App() {
             <Route path="/cover-letters/paste" element={<CoverLetterPaste />} />
             <Route path="/cover-letters/new" element={<CoverLetterNew />} />
             <Route path="/cover-letters/:id/items/:itemId" element={<CoverLetterWrite />} />
+            <Route path="/cover-letters/:id" element={<CoverLetterDetail />} />
           </Route>
         </Route>
         <Route path="*" element={<NotFound />} />
