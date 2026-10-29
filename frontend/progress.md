@@ -52,3 +52,5 @@
   막힌 점: 전체 vitest에서 매번 다른 화면 테스트 하나가 가끔 부하 flake로 실패(단독·재실행은 통과).
 - [21] Resume(E) 신설(붙여넣기·활동 나누기·확인할 활동 고치기/빼기/직접 추가·경험 만들기), ExperienceNew 삭제, /resume 라우트, 홈 `이력서 입력`·목록 `이력서에서 활동 추가`, 경험 상세 왼쪽 활동 목록, Resume.test.tsx 추가, Experiences/Home/FactPanels 테스트를 새 흐름(S2 포함)으로 수정.
   남은 일: 22번 디자인 기반(경험 상세 세 칸 배치는 23번). 막힌 점: 기본 워커 수 전체 vitest에서 CoverLetterPaste 같은 무관한 테스트가 가끔 부하 flake(단독·--maxWorkers=2는 통과).
+- [22] before 걸림: home H6(라일락 큰 면)·헤더 구분선 없음, experience H1·H5(64px 섹션 제목 넷)·H6(라임 면 30% 넘음)·M5(점선 행 5개). index.css에 line·ink-60·fill 토큰, card·stage-chip·chip(ok/need/miss/next)·meter, StageBlock=흰 카드+StageChip, StatusChip·Meter(쓰기·점검 막대도 교체), 헤더 아래 선·밑줄 메뉴, 섹션 제목 label, 활동 목록 지금 행 lime, 소개는 색 블록 유지.
+  와이어프레임(ask.png)과 다른 점: 경험 상세 제목 64px(와이어 28px)·대화가 말풍선 아님·입력칸이 대화 밑에 붙지 않음·두 칸 배치·목록 메타(설명됨 N/5) 없음 → 23번. 홈 목록은 회색 면 행(흰 카드+선 아님) → 27번. 막힌 점 없음.

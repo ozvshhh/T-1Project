@@ -169,7 +169,7 @@ export function CandidatePanel({
 
   return (
     <StageBlock stage="experience" className="grid gap-3">
-      <h2 className="h2">확인할 사실</h2>
+      <h2 className="label">확인할 사실</h2>
       {experience.candidates.length === 0 && (
         <div className="row row-pending">확인할 사실이 없어요</div>
       )}
@@ -261,7 +261,7 @@ export function CardPanel({
 
   return (
     <StageBlock stage="experience" className="grid gap-3">
-      <h2 className="h2">경험 카드</h2>
+      <h2 className="label">경험 카드</h2>
       {ITEM_ORDER.map((item) => {
         const facts = experience.card[item]
         return (

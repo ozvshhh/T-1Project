@@ -3,8 +3,9 @@ import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom'
 import { api, ApiError } from '@/api/client'
 import type { Clue, Experience, ItemStatusMap, Message } from '@/api/types'
 import { AiStatus } from '@/components/AiStatus'
-import { StageBlock } from '@/components/StageBlock'
-import { StatusRow } from '@/components/Status'
+import { StageBlock, StageChip } from '@/components/StageBlock'
+import { Meter } from '@/components/Meter'
+import { StatusChip } from '@/components/Status'
 import { ErrorView, Loading } from '@/components/States'
 import { ITEM_LABELS, ITEM_ORDER } from '@/lib/cards'
 import { statusKind } from '@/lib/status'
@@ -109,6 +110,13 @@ function Detail({
     )
   }
 
+  const explained = ITEM_ORDER.filter((item) => itemStatus[item] === 'explained').length
+  // 마지막 줄이 AI 질문이면, 아직 설명되지 않은 첫 항목을 지금 묻고 있다(목 대화도 이 순서로 묻는다).
+  const asking =
+    messages.at(-1)?.role === 'ai'
+      ? ITEM_ORDER.find((item) => itemStatus[item] !== 'explained')
+      : undefined
+
   return (
     <main className="wrap grid items-start gap-4 pt-12 pb-12 lg:grid-cols-[14rem_1fr]">
       <ActivityList current={experience} />
@@ -121,12 +129,13 @@ function Detail({
           </div>
         )}
         <StageBlock stage="experience">
+          <StageChip stage="experience" />
           <Header experience={experience} onChange={setExperience} clueFailed={clueFailed} />
         </StageBlock>
 
         <div className="grid gap-4 md:grid-cols-2">
           <StageBlock stage="experience" className="grid content-start gap-4">
-            <h2 className="h2">대화</h2>
+            <h2 className="label">대화</h2>
             <ol className="grid gap-3" aria-label="대화 내용">
               {messages.map((m, i) => (
                 <li key={i} className="inner-card flex gap-3">
@@ -163,14 +172,25 @@ function Detail({
           </StageBlock>
 
           <div className="grid content-start gap-4">
-            <StageBlock stage="experience" className="grid gap-3">
-              <h2 className="h2">항목 상태</h2>
-              <div className="grid gap-2" aria-live="polite">
-                {ITEM_ORDER.map((item) => (
-                  <StatusRow key={item} kind={statusKind(itemStatus[item])}>
-                    {ITEM_LABELS[item]}
-                  </StatusRow>
-                ))}
+            <StageBlock stage="experience">
+              <h2 className="label">항목 상태</h2>
+              <div className="grid gap-3" aria-live="polite">
+                <p className="text-[40px] leading-none font-light tracking-[-0.06em] tabular-nums">
+                  {explained}
+                  <span className="text-[20px]"> / {ITEM_ORDER.length}</span>
+                </p>
+                <Meter cells={ITEM_ORDER.map((item) => itemStatus[item] === 'explained')} />
+                <div className="flex flex-wrap gap-1.5">
+                  {ITEM_ORDER.map((item) => (
+                    <StatusChip
+                      key={item}
+                      kind={statusKind(itemStatus[item])}
+                      asking={item === asking}
+                    >
+                      {ITEM_LABELS[item]}
+                    </StatusChip>
+                  ))}
+                </div>
               </div>
               <p className="meta">카드를 고쳐도 상태는 바뀌지 않아요. 다시 대화하면 갱신돼요.</p>
             </StageBlock>
@@ -196,7 +216,8 @@ function ActivityList({ current }: { current: Experience }) {
             <Link
               to={`/experiences/${e.id}`}
               aria-current={e.id === current.id ? 'page' : undefined}
-              className={`${e.id === current.id ? 'row-select' : 'row'} rounded-row block px-3 py-2 text-[15px]`}
+              // 지금 경험은 단계 색으로 표시한다(와이어프레임 .rail a.on).
+              className={`rounded-row focus-visible:outline-ink block border px-3 py-2 text-[15px] transition-[background-color] duration-150 outline-none focus-visible:outline-2 focus-visible:outline-offset-2 ${e.id === current.id ? 'border-ink bg-lime' : 'hover:bg-fill border-transparent'}`}
             >
               {e.title}
             </Link>

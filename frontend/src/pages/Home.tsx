@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom'
 import { api } from '@/api/client'
 import type { CoverLetter } from '@/api/types'
 import { ErrorView, Loading } from '@/components/States'
-import { StageBlock } from '@/components/StageBlock'
+import { StageBlock, StageChip } from '@/components/StageBlock'
 import { isUnlocked } from '@/lib/cards'
 import { formatDate } from '@/lib/format'
 import { useLoad } from '@/lib/useLoad'
@@ -51,6 +51,7 @@ export default function Home() {
     return (
       <main className="wrap pt-12">
         <StageBlock stage="experience">
+          <StageChip stage="experience" />
           <p className="h2">경험 카드를 먼저 하나 확정해야 자소서를 쓰고 점검할 수 있어요.</p>
           <div className="flex flex-wrap gap-3">
             <Link to="/resume" className="btn btn-primary">
@@ -70,6 +71,7 @@ export default function Home() {
   return (
     <main className="wrap grid gap-4 pt-12">
       <StageBlock stage="coverLetter">
+        <StageChip stage="coverLetter" />
         <div className="flex flex-wrap gap-3">
           <Link to="/cover-letters/new" className="btn btn-primary">
             새로 쓰기

@@ -3,6 +3,7 @@ import { Link, useLocation, useParams } from 'react-router-dom'
 import { api, ApiError } from '@/api/client'
 import type { CoverLetter, CoverLetterItem, Experience } from '@/api/types'
 import { AiStatus } from '@/components/AiStatus'
+import { Meter } from '@/components/Meter'
 import { CheckMark } from '@/components/CheckMark'
 import { StageBlock } from '@/components/StageBlock'
 import { StatusRow } from '@/components/Status'
@@ -174,14 +175,7 @@ function Write({
     <main className="wrap grid gap-4 pt-12 pb-12">
       <StageBlock stage="coverLetter" className="grid gap-5">
         <div className="grid gap-2">
-          <div className="flex gap-1" aria-hidden>
-            {letter.items.map((i) => (
-              <span
-                key={i.id}
-                className={`rounded-pill h-2 flex-1 ${i.answer !== null ? 'bg-ink' : 'border-ink border'}`}
-              />
-            ))}
-          </div>
+          <Meter cells={letter.items.map((i) => i.answer !== null)} />
           <p className="meta">{`응답 ${answered} / 문항 ${letter.items.length}`}</p>
         </div>
         <nav aria-label="문항 이동" className="flex flex-wrap gap-2">

@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api, ApiError } from '@/api/client'
 import type { Check, CheckSentence, JudgeResult } from '@/api/types'
 import { AiStatus } from '@/components/AiStatus'
+import { Meter } from '@/components/Meter'
 import { StageBlock } from '@/components/StageBlock'
 import { StatusBadge } from '@/components/Status'
 import { ErrorView, Loading } from '@/components/States'
@@ -159,14 +160,7 @@ function CheckView({ initial }: { initial: Check }) {
       <StageBlock stage="check" className="grid gap-4">
         <h1 className="h2">제출 전 점검</h1>
         <div className="grid gap-2">
-          <div className="flex gap-1" aria-hidden>
-            {sentences.map((s) => (
-              <span
-                key={s.id}
-                className={`rounded-pill h-2 flex-1 ${isFinished(s) ? 'bg-ink' : 'border-ink border'}`}
-              />
-            ))}
-          </div>
+          <Meter cells={sentences.map(isFinished)} />
           <p className="meta">{`끝난 문장 ${done} / 전체 ${sentences.length}`}</p>
         </div>
       </StageBlock>
