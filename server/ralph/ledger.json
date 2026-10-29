@@ -338,56 +338,56 @@
       "spec": "10-resume.md",
       "title": "`GET /api/resume`가 처음엔 `{resume:{text:null, drafts:[], updatedAt:null}}`. `POST /api/resume/drafts` `{title, period?, summary?}` → `201 {draft}`(`origin: manual`, 빠진 칸은 빈 문자열), 빈·공백 title 400. `PATCH .../drafts/:draftId`로 title·period·summary 수정(빈 title 400), `DELETE` 204. 남의 초안·없는 id·잘못된 id 형식 404, 토큰 없음 401. 다른 계정의 이력서가 보이지 않는다. AI를 부르지 않는다(FakeAi 호출 0). e2e 테스트 있음.",
       "docker": false,
-      "status": "todo",
-      "fixCount": 0,
-      "snapshot": null
+      "status": "pass",
+      "fixCount": 1,
+      "snapshot": "ff23e2fbc4dc1abc7634100f80717dea9d859c37"
     },
     {
       "id": "C10-2",
       "spec": "10-resume.md",
       "title": "`POST /api/resume` `{text}`가 FakeAi 응답의 활동을 초안(`origin: ai`)으로 더하고 `200 {resume, added}`를 돌려준다. AI 입력에 붙여넣은 글이 있다(FakeAi 기록). 내 경험·내 초안과 제목이 같은 활동, 응답 안의 중복 제목, 빈 제목은 빠진다. 다시 붙여넣으면 `text`가 새 글로 바뀌고 새 활동만 더해진다. 빈·공백 text 400(AI 미호출). AI 실패·스키마 밖 → 502이고 `text`·`drafts`가 호출 전과 같다. 응답 스키마가 strict 호환 테스트 목록에 있다. e2e 테스트 있음.",
       "docker": false,
-      "status": "todo",
-      "fixCount": 0,
-      "snapshot": null
+      "status": "pass",
+      "fixCount": 1,
+      "snapshot": "bda05ff8cabbc6197e8b4a4a1859866a6d127d8b"
     },
     {
       "id": "C10-3",
       "spec": "10-resume.md",
       "title": "`POST /api/resume/drafts/confirm` `{draftIds}`가 요청 순서대로 경험을 만들어 `201 {experiences}`(각각 초안의 title·period·summary, 빈 clues·card·candidates, itemStatus 모두 null)를 돌려주고 그 초안들을 `drafts`에서 뺀다. 만든 경험은 `GET /api/experiences`에 보인다. 빈 배열·문자열 아님 → 400, 없는/남의 초안이 섞이면 404이고 경험·초안이 그대로. `POST /api/experiences`는 404. 모든 경험 응답(목록·상세·PATCH·확정)에 `summary`가 있다. 기존 05~08 e2e가 `POST /api/experiences` 없이 통과한다. e2e 테스트 있음.",
       "docker": false,
-      "status": "todo",
-      "fixCount": 0,
-      "snapshot": null
+      "status": "pass",
+      "fixCount": 1,
+      "snapshot": "0407d8df08935d2e079e72fe1a2e074ee2a62070"
     },
     {
       "id": "C10-4",
       "spec": "10-resume.md",
       "title": "경험 대화 `start`·`answers`의 AI 입력에 그 경험의 `summary`가 들어가고(FakeAi 기록 단언), `summary`가 빈 문자열이면 그 줄이 없다. 기존 06 단언(설명 있는 파일 단서·텍스트 단서 포함, 설명 없는 파일 단서·파일 이름 제외)이 그대로 통과한다. e2e 테스트 있음.",
       "docker": false,
-      "status": "todo",
-      "fixCount": 0,
-      "snapshot": null
+      "status": "pass",
+      "fixCount": 1,
+      "snapshot": "34182498b2b92f33fcd7a95267e3428c526104a3"
     },
     {
       "id": "C10-5",
       "spec": "10-resume.md",
       "title": "빈 DB 시드 뒤 시드 계정으로 `GET /api/resume`가 mock-data.md의 글(글자 일치)과 초안 하나(`프로그래밍 동아리 운영진`·`2024년`·`origin: ai`)를, `GET /api/experiences`가 경험 1·2를 이 순서로 각 `summary`(글의 해당 줄)와 함께, `GET /api/cover-letters`가 `가나다소프트 백엔드 지원`(pasted)·`라라테크 백엔드 지원`(generated)을 이 순서로 돌려준다. `GET /api/cover-letters/:id`(라라테크)의 문항 1 응답이 `GENERATED_ANSWER`와 글자까지 같고 `usedExperienceIds`가 경험 1·2, `experiences`에 두 경험, 문항 2는 `answer: null`. 두 번 돌려도 개수가 같다. 기존 09 단언은 그대로 통과한다. 테스트 있음.",
       "docker": false,
-      "status": "todo",
-      "fixCount": 0,
-      "snapshot": null
+      "status": "pass",
+      "fixCount": 1,
+      "snapshot": "6fb2f867d03d4e3a136bdaf25b473c685b33fb6d"
     },
     {
       "id": "C10-6",
       "spec": "10-resume.md",
       "title": "`docker compose down -v` → `docker compose up -d --build` 뒤 2분 안에 `/__health` 200이고, compose의 시드 계정으로 로그인한 토큰으로 `GET /api/resume` 초안 1개, `GET /api/experiences` 2개, `GET /api/cover-letters` 2개. 이어서 `POST /api/resume/drafts` → `POST /api/resume/drafts/confirm` 하면 경험 3개·초안 1개(시드 초안)이고, `POST /api/experiences`는 404. 끝나면 `docker compose down -v`.",
       "docker": true,
-      "status": "todo",
+      "status": "pass",
       "fixCount": 0,
       "snapshot": null
     }
   ],
   "stage": "10-resume.md",
-  "sweeps": 0
+  "sweeps": 1
 }
