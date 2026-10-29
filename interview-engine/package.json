@@ -1,0 +1,31 @@
+{
+  "name": "interview-engine",
+  "version": "0.1.0",
+  "private": true,
+  "description": "2:1 모의면접(실무·임원) 진행 로직. 서버 프레임워크·DB에 묶이지 않는 모듈.",
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "check": "tsc --noEmit && vitest run"
+  },
+  "dependencies": {
+    "zod": "^4.1.0"
+  },
+  "devDependencies": {
+    "@nestjs/common": "^11.2.8",
+    "@nestjs/core": "^11.2.8",
+    "@nestjs/platform-express": "^11.2.8",
+    "@nestjs/testing": "^11.2.8",
+    "@types/express": "^5.0.6",
+    "@types/node": "^22.0.0",
+    "@types/supertest": "^6.0.3",
+    "mongodb": "^6.10.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2",
+    "supertest": "^7.3.1",
+    "typescript": "^5.9.0",
+    "vitest": "^3.2.0"
+  }
+}
