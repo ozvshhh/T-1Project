@@ -1,0 +1,15 @@
+server {
+  listen 3000;
+  root /usr/share/nginx/html;
+
+  # 배포 상태 확인용. releaseId 는 빌드 때 주입한 commit SHA.
+  location = /__health {
+    default_type application/json;
+    add_header Cache-Control no-store;
+    return 200 '{"releaseId":"${RELEASE_ID}"}';
+  }
+
+  location / {
+    try_files $uri /index.html;
+  }
+}

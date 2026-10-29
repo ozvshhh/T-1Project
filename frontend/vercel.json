@@ -1,7 +1,0 @@
-{
-  "framework": "vite",
-  "rewrites": [
-    { "source": "/__health", "destination": "/api/health" },
-    { "source": "/((?!api/).*)", "destination": "/index.html" }
-  ]
-}
