@@ -13,7 +13,7 @@
 - [x] 6. 공통 레이아웃: 헤더(로그인 전·후), 로그인 보호, 자소서 잠금 가드, AI 진행·실패·`다시 시도` 컴포넌트, 상태 표시 컴포넌트, 단계 색(specs/00-common.md). 테스트: 로그인 안 한 채 `/experiences`면 로그인 화면, 확정 카드 없는 계정으로 `/cover-letters/paste`면 홈 잠금 안내, `로그아웃`이면 토큰 삭제.
 - [x] 7. A 소개·B 가입·로그인 (specs/01-auth.md, 시나리오 S1).
 - [x] 8. C 홈 잠금·목록 (specs/02-home.md, S1·S3). S1 흐름 테스트: 소개 → `가입하기` → 가입 → 잠금 안내와 `경험 등록`.
-- [ ] 9. D 경험 목록·E 경험 등록 (specs/03-experiences.md).
+- [x] 9. D 경험 목록·E 경험 등록 (specs/03-experiences.md).
 - [ ] 10. F 경험 상세 — 위 영역·대화·항목 상태 (specs/04-experience-detail.md, S4).
 - [ ] 11. F 경험 상세 — 사실 후보 확정·경험 카드·직접 추가 (specs/04-experience-detail.md, S2). S2 흐름 테스트: 가입 → `경험 등록` → 등록 → `직접 추가` → `카드에 추가` → `자소서` 메뉴에서 `새로 쓰기`가 보임.
 - [ ] 12. G 붙여넣기 (specs/05-cover-letters.md, S3). S3 흐름 테스트.

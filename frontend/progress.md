@@ -25,3 +25,5 @@
   남은 일: 8번 C 홈 잠금·목록(`/cover-letters` 라우트와 RequireAuth 연결). 막힌 점 없음(lint 경고는 기존 useLoad.ts 것).
 - [8] Home(C) 신설: 잠금 안내·열린 상태 목록, App에 RequireAuth로 /cover-letters 연결, Home.test.tsx(S1 흐름 포함) 추가.
   남은 일: 9번 D 경험 목록·E 경험 등록. 막힌 점 없음(lint 경고는 기존 useLoad.ts 것).
+- [9] Experiences(D)·ExperienceNew(E) 신설, App에 /experiences·/experiences/new 연결, Experiences.test.tsx 추가(업로드 실패 시 navigate state clueFailed 전달).
+  남은 일: 10번 F 경험 상세(clueFailed 안내 표시 포함). 막힌 점 없음(lint 경고는 기존 useLoad.ts 것).

@@ -2,6 +2,8 @@ import { Route, Routes } from 'react-router-dom'
 import { RequireAuth } from '@/components/guards'
 import Layout from '@/components/Layout'
 import AuthPage from '@/pages/AuthPage'
+import ExperienceNew from '@/pages/ExperienceNew'
+import Experiences from '@/pages/Experiences'
 import Home from '@/pages/Home'
 import Intro from '@/pages/Intro'
 import NotFound from '@/pages/NotFound'
@@ -16,6 +18,8 @@ export default function App() {
         <Route path="/login" element={<AuthPage mode="login" />} />
         <Route element={<RequireAuth />}>
           <Route path="/cover-letters" element={<Home />} />
+          <Route path="/experiences" element={<Experiences />} />
+          <Route path="/experiences/new" element={<ExperienceNew />} />
         </Route>
         <Route path="*" element={<NotFound />} />
       </Route>
