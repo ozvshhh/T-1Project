@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { AiModule } from '../ai/ai.module';
 import { Experience, ExperienceSchema } from '../experiences/experience.schema';
+import { ExperiencesModule } from '../experiences/experiences.module';
 import { Fact, FactSchema } from '../experiences/fact.schema';
 import { CoverLetter, CoverLetterSchema } from './cover-letter.schema';
 import { CoverLettersController } from './cover-letters.controller';
@@ -18,6 +19,8 @@ import { CoverLettersService } from './cover-letters.service';
     ]),
     // 추천이 AI를 부른다. 테스트는 AiService를 FakeAiService로 바꿔 끼운다(실제 Gateway 호출 금지).
     AiModule,
+    // 상세 조회의 근거 카드(experiences)를 경험 상세와 같은 모양으로 조립한다.
+    ExperiencesModule,
   ],
   controllers: [CoverLettersController],
   providers: [CoverLettersService],

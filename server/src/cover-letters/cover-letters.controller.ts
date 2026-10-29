@@ -1,5 +1,6 @@
 import { Body, Controller, Get, HttpCode, HttpStatus, Param, Patch, Post, Put } from '@nestjs/common';
 import { AuthUser, CurrentUser } from '../auth/current-user.decorator';
+import { ExperienceDto } from '../experiences/experience.dto';
 import { CoverLetterDto, CoverLetterItemDto } from './cover-letter.dto';
 import {
   validateCreateCoverLetter,
@@ -38,6 +39,15 @@ export class CoverLettersController {
   @Get()
   async list(@CurrentUser() user: AuthUser): Promise<{ coverLetters: CoverLetterDto[] }> {
     return { coverLetters: await this.service.listByUser(user.id) };
+  }
+
+  // 결과 화면(R13)이 자소서와 응답에 쓴 카드를 한 번에 그린다. 남의 것·없는 것·잘못된 id는 같은 404.
+  @Get(':id')
+  async get(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+  ): Promise<{ coverLetter: CoverLetterDto; experiences: ExperienceDto[] }> {
+    return this.service.get(user.id, id);
   }
 
   // 검증을 소유자 조회보다 먼저 해 빈 글 400 여부가 남의 자소서 존재와 무관하게 한다.

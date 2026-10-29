@@ -61,6 +61,17 @@ export class ExperiencesService {
     return this.assemble(await this.findOwned(userId, id));
   }
 
+  // 다른 기능(자소서 근거 카드)이 경험 상세와 같은 모양으로 여러 장을 받아 간다. 내 것이 아니거나 지운 경험은 조용히 빠지고, 순서는 받은 id 순서를 따른다.
+  async getMany(userId: string, ids: Types.ObjectId[]): Promise<ExperienceDto[]> {
+    if (!ids.length) return [];
+    const docs = await this.experiences
+      .find({ _id: { $in: ids }, userId: new Types.ObjectId(userId) })
+      .lean<ExperienceRecord[]>();
+    const byId = new Map(docs.map((doc) => [String(doc._id), doc]));
+    const ordered = ids.map((oid) => byId.get(String(oid))).filter((doc): doc is ExperienceRecord => !!doc);
+    return Promise.all(ordered.map((doc) => this.assemble(doc)));
+  }
+
   // 소유자 확인 뒤에만 고친다. 고친 칸이 없으면 updatedAt도 그대로 둬 목록 순서를 흔들지 않는다.
   async update(userId: string, id: string, input: Partial<ExperienceInput>): Promise<ExperienceDto> {
     const owned = await this.findOwned(userId, id);

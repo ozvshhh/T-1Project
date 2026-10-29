@@ -3,7 +3,9 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types, UpdateQuery } from 'mongoose';
 import { AiService } from '../ai/ai.service';
 import { assertOwner, parseObjectIdOr404 } from '../common/ownership';
+import { ExperienceDto } from '../experiences/experience.dto';
 import { Experience } from '../experiences/experience.schema';
+import { ExperiencesService } from '../experiences/experiences.service';
 import { Fact } from '../experiences/fact.schema';
 import { CoverLetterDto, CoverLetterItemDto, toCoverLetterDto, toItemDto } from './cover-letter.dto';
 import { CoverLetter, CoverLetterItem } from './cover-letter.schema';
@@ -34,6 +36,8 @@ export class CoverLettersService {
     @InjectModel(Experience.name) private readonly experiences: Model<Experience>,
     @InjectModel(Fact.name) private readonly facts: Model<Fact>,
     private readonly ai: AiService,
+    // 근거 카드를 경험 상세와 같은 모양으로 만들려고 경험 모듈의 조립을 그대로 쓴다(모양이 두 곳에서 갈라지지 않게).
+    private readonly experienceCards: ExperiencesService,
   ) {}
 
   // 문항별 카드 추천(R8). 후보 집합은 서버가 정하고 AI는 그 안에서만 고른다: AI가 돌려준 id는 집합과 대조해 버린다.
@@ -279,6 +283,23 @@ export class CoverLettersService {
       items: input.questions.map((question) => ({ question })),
     });
     return toCoverLetterDto(created.toObject());
+  }
+
+  // 자소서 상세 + 응답에 실제로 쓴 카드(R13). 고르기만 한 카드(selected)가 아니라 usedExperienceIds만 모아야 근거 표시가 응답과 맞는다.
+  // 문항 순서대로 처음 나온 순서로 중복을 지워 화면 순서를 고정하고, 지운 경험은 getMany가 빼 준다.
+  async get(userId: string, id: string): Promise<{ coverLetter: CoverLetterDto; experiences: ExperienceDto[] }> {
+    const owned = await this.findOwned(userId, id);
+    const used = new Map<string, Types.ObjectId>();
+    for (const item of owned.items ?? []) {
+      for (const expId of item.usedExperienceIds ?? []) {
+        const key = String(expId);
+        if (!used.has(key)) used.set(key, new Types.ObjectId(key));
+      }
+    }
+    return {
+      coverLetter: toCoverLetterDto(owned),
+      experiences: await this.experienceCards.getMany(userId, [...used.values()]),
+    };
   }
 
   // 토큰 사용자의 것만, 최근 수정순(R1·R7). 같은 시각이면 _id로 순서를 고정해 목록이 흔들리지 않게 한다.

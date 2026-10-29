@@ -784,8 +784,89 @@ describe('C7-1 /api/cover-letters create·list·patch', () => {
     expect((await savedItems(a.token, id))[0].answer).toBeNull();
   });
 
+  const getOne = (token: string, id: string) =>
+    http().get(`/api/cover-letters/${id}`).set('Authorization', `Bearer ${token}`);
+
+  interface DetailBody {
+    coverLetter: CoverLetterBody;
+    experiences: { id: string }[];
+  }
+
+  // 결과 화면은 응답에 실제로 쓴 카드만 근거로 보여 준다(R13): 고르기만 한 카드·중복·지운 카드가 섞이면 근거 표시가 틀린다.
+  it('GET /:id returns {coverLetter, experiences} with the de-duplicated union of usedExperienceIds', async () => {
+    const eA = await insertExperience(a.userId, '경험 A');
+    await insertFact(a.userId, eA, 'A의 확정 사실', 'confirmed');
+    const eB = await insertExperience(a.userId, '경험 B');
+    await insertFact(a.userId, eB, 'B의 확정 사실', 'confirmed');
+    const eC = await insertExperience(a.userId, '경험 C');
+    await insertFact(a.userId, eC, 'C의 확정 사실', 'confirmed');
+    const { id, itemIds } = await generatedTwo(a.token);
+    expect((await select(a.token, id, itemIds[0], { experienceIds: [eA, eB] })).status).toBe(200);
+    expect((await select(a.token, id, itemIds[1], { experienceIds: [eA] })).status).toBe(200);
+    fake.queue('cover-letter-answer', { answer: '응답 1' }, { answer: '응답 2' });
+    expect((await answer(a.token, id, itemIds[0])).status).toBe(200);
+    expect((await answer(a.token, id, itemIds[1])).status).toBe(200);
+    // 문항 2에 C를 고르기만 하고 응답은 만들지 않는다: usedExperienceIds 기준이라 C는 빠져야 한다.
+    expect((await select(a.token, id, itemIds[1], { experienceIds: [eA, eC] })).status).toBe(200);
+
+    const res = await getOne(a.token, id);
+    expect(res.status).toBe(200);
+    const body = res.body as DetailBody;
+    expect(Object.keys(body)).toEqual(['coverLetter', 'experiences']);
+    expect(body.coverLetter.id).toBe(id);
+    expect((body.coverLetter.items as ItemBody[]).map((i) => i.answer)).toEqual(['응답 1', '응답 2']);
+    // 문항 순서대로 처음 나온 순서: 화면이 흔들리지 않게 순서를 고정한다.
+    expect(body.experiences.map((e) => e.id)).toEqual([eA, eB]);
+    // 경험 상세와 같은 모양이어야 프런트가 같은 카드 컴포넌트로 그린다.
+    const detailA = await http().get(`/api/experiences/${eA}`).set('Authorization', `Bearer ${a.token}`).expect(200);
+    expect(body.experiences[0]).toEqual((detailA.body as { experience: unknown }).experience);
+
+    // 사용 뒤 지운 경험은 빠진다.
+    await connection.collection('experiences').deleteOne({ _id: new Types.ObjectId(eB) });
+    expect(((await getOne(a.token, id)).body as DetailBody).experiences.map((e) => e.id)).toEqual([eA]);
+  });
+
+  it('GET /:id returns experiences [] for a pasted cover letter', async () => {
+    const cl = await createOk(a.token, { body: '붙여넣은 글' });
+    const res = await getOne(a.token, cl.id);
+    expect(res.status).toBe(200);
+    expect((res.body as DetailBody).experiences).toEqual([]);
+    expect((res.body as DetailBody).coverLetter.kind).toBe('pasted');
+  });
+
+  // 남의 자소서가 있는지조차 알 수 없어야 한다(R1).
+  it("GET /:id returns 404 for another user's, missing, or malformed id", async () => {
+    const cl = await createOk(a.token, { body: 'A의 글' });
+    expectNotFound(await getOne(b.token, cl.id));
+    expectNotFound(await getOne(a.token, '0123456789abcdef01234567'));
+    expectNotFound(await getOne(a.token, 'not-an-id'));
+  });
+
+  // AI가 응답을 바꾸는 길은 사용자가 부른 .../answer 하나뿐이어야 한다(C4): 추천·선택 뒤 응답이 바뀌면 사용자가 모르게 글이 바뀐다.
+  it('recommendations and experiences APIs leave answer untouched and never call the answer task (C4)', async () => {
+    const { id, itemIds, e1, e2 } = await readyToAnswer();
+    fake.queue('cover-letter-answer', { answer: '내 응답' });
+    expect((await answer(a.token, id, itemIds[0])).status).toBe(200);
+    expect((await patchItem(a.token, id, itemIds[0], { answer: '직접 고친 응답' })).status).toBe(200);
+    const before = ((await getOne(a.token, id)).body as DetailBody).coverLetter.items[0] as ItemBody;
+    const answerCalls = () => fake.calls.filter((c) => c.task === 'cover-letter-answer').length;
+    const callsBefore = answerCalls();
+
+    fake.queue('cover-letter-recommend', { recommendations: [{ experienceId: e2, reason: '추천' }] });
+    expect((await recommend(a.token, id, itemIds[0])).status).toBe(200);
+    expect((await select(a.token, id, itemIds[0], { experienceIds: [e2] })).status).toBe(200);
+    expect((await select(a.token, id, itemIds[0], { experienceIds: [e1] })).status).toBe(200);
+
+    const after = ((await getOne(a.token, id)).body as DetailBody).coverLetter.items[0] as ItemBody;
+    expect(after.answer).toBe('직접 고친 응답');
+    expect(after.answerEdited).toBe(before.answerEdited);
+    expect(after.usedExperienceIds).toEqual(before.usedExperienceIds);
+    expect(answerCalls()).toBe(callsBefore);
+  });
+
   // 로그인 전에는 기능을 쓸 수 없다(C3).
   it('requires a token on every route', async () => {
+    expect((await http().get('/api/cover-letters/0123456789abcdef01234567')).status).toBe(401);
     expect((await http().post(`/api/cover-letters/${'0'.repeat(24)}/items/${'0'.repeat(24)}/answer`)).status).toBe(401);
     expect(
       (await http().patch(`/api/cover-letters/${'0'.repeat(24)}/items/${'0'.repeat(24)}`).send({ answer: 'x' })).status,
