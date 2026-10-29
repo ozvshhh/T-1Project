@@ -1,15 +1,20 @@
 server {
   listen 3000;
   root /usr/share/nginx/html;
+  # 경험 단서 파일(최대 5MB)이 nginx에서 413으로 막히지 않게 여유를 둔다.
+  client_max_body_size 6m;
 
   # 배포 상태 확인용. releaseId 는 server 가 RELEASE_ID(빌드 때 주입한 commit SHA)로 답한다.
+  # ${API_UPSTREAM}은 컨테이너 시작 때 nginx 이미지가 환경변수로 치환한다(compose: server:3001, Lightsail: localhost:3001).
   location = /__health {
-    proxy_pass http://server:3000/__health;
+    proxy_pass ${API_UPSTREAM}/__health;
   }
 
   # API 는 NestJS server 로 넘긴다(전역 prefix api 그대로 유지).
+  # AI 호출(타임아웃 30초 + 재시도 1회)이 nginx 기본 60초에 끊기지 않게 대기 시간을 늘린다.
   location /api/ {
-    proxy_pass http://server:3000;
+    proxy_pass ${API_UPSTREAM};
+    proxy_read_timeout 120s;
   }
 
   location / {
