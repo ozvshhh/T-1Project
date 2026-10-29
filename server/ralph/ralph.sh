@@ -4,7 +4,8 @@ set -u
 cd "$(dirname "$0")/../.." || exit 1
 R=server/ralph
 CLAIMS=$(node $R/check.mjs count)
-MAX="${1:-$(( CLAIMS * 4 + 2 ))}"           # 위키 관찰: 상한은 주장 수 × 3보다 크게
+DEFAULT_MAX=$(( CLAIMS * 4 + 2 ))              # 위키 관찰: 상한은 주장 수 × 3보다 크게
+MAX="${1:-$DEFAULT_MAX}"
 mkdir -p $R/logs $R/reviews $R/confirms
 echo "주장 $CLAIMS개, 최대 반복 $MAX"
 
