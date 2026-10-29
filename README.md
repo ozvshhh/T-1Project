@@ -7,6 +7,7 @@ SUMTECH 2026 루프톤 팀 서비스 저장소입니다. 주제: AI 에이전트
 - `docs/problem.yaml` — 문제 정의와 기능 명세 (2단계에서 작성)
 - `docs/scenarios.yaml` — 사용자 핵심 흐름과 주 사용 플랫폼 (2단계에서 작성)
 - `progress.md` — 진행 기록
+- `docs/api.md` — API 명세(백엔드 초안)
 - `docs/interview-design.md` — 모의면접 설계(팀원 작성), `docs/paper-notes.md` — 종이 메모, `docs/problem-revision-proposal.md` — 문제정의 수정안(합의 전)
 
 ## 구현 설계 (2-C, 2026-10-29 작성 중)
