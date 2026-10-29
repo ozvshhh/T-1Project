@@ -34,7 +34,7 @@
 - [x] 21. 흐름 변경 ② 화면: E 이력서 입력 `/resume`(specs/03-experiences.md)을 만들고, 이전 경험 등록 화면(`src/pages/ExperienceNew.tsx`, `/experiences/new`)을 `git rm`으로 지운다. 홈 잠금 버튼 `이력서 입력`, 경험 목록 주 버튼 `이력서에서 활동 추가`, 경험 상세 왼쪽 활동 목록(specs/04 첫 문단)을 맞춘다. S2 흐름 테스트(이력서 화면에서 `활동 직접 추가` → `목록에 추가` → `경험 만들기` → `직접 추가` → 잠금 해제)로 바꾼다. 이 작업에서 `src/pages/Experiences.test.tsx`, `src/pages/Home.test.tsx`, `src/pages/FactPanels.test.tsx`는 고쳐도 된다.
 - [x] 22. 디자인 기반: 와이어프레임의 공통 모양을 `src/index.css`와 공통 컴포넌트에 넣는다. 흰 바탕, 흰 카드 + 얇은 선(`--line` 검정 12%), 보조 글자색(`--ink-60` 검정 60%), 옅은 면(`--fill` 검정 4%)(이 셋은 와이어프레임에서 승인된 보조값, 학생 답 2026-10-30), 단계 칩(`1 경험 꺼내기` 등), 상태 칩(설명됨·추가 확인 필요·모름·지금 묻는 중), 진행 막대, 이름표 크기 섹션 제목. 헤더도 와이어프레임처럼. 확인할 화면: home, experience.
 - [x] 23. 디자인 F 경험 상세(활동별 질문) — `wireframes/ask.png`: 세 칸(활동 목록 · 메신저형 대화와 바로 아래 입력칸 · 항목 상태 진행 막대+칩, 확인할 사실, 경험 카드). 화면: experience.
-- [ ] 24. 디자인 E 이력서 입력 — `wireframes/resume.png`. 화면: resume.
+- [x] 24. 디자인 E 이력서 입력 — `wireframes/resume.png`. 화면: resume.
 - [ ] 25. 디자인 J 자소서 상세와 I 문항별 작성 — `wireframes/letter.png`: 왼쪽 큰 자소서 카드, 오른쪽 쓴 경험 카드 세로, 근거 문장·사실 짝 강조. 화면: letter, write.
 - [ ] 26. 디자인 K 제출 전 점검 — `wireframes/check.png`: 왼쪽 문장 목록(상태 칩), 가운데 큰 인용 + 질문·답 쌓기 + J1~J4 칩, 아래 입력칸. 화면: check.
 - [ ] 27. 디자인 A 소개·C 홈·D 경험 목록: 와이어프레임 원칙(POLISH H5·H6·M2·M5)으로 맞춘다. 화면: intro, home, experiences.
