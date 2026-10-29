@@ -32,6 +32,7 @@
   "dependencies": {
     "@nestjs/common": "^11.2.8",
     "@nestjs/core": "^11.2.8",
+    "@nestjs/jwt": "^11.0.2",
     "@nestjs/mongoose": "^11.0.4",
     "@nestjs/platform-express": "^11.2.8",
     "bcryptjs": "^3.0.3",
@@ -53,6 +54,7 @@
     "globals": "^17.13.0",
     "jest": "^29.7.0",
     "js-yaml": "^5.5.0",
+    "mongodb-memory-server": "^11.3.0",
     "prettier": "^3.9.10",
     "supertest": "^7.3.1",
     "ts-jest": "^29.4.15",
