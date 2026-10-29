@@ -47,3 +47,6 @@
   남은 일: 19번 마무리(npm run check). 막힌 점: 기본 워커 수의 전체 vitest는 무관한 테스트가 가끔 타임아웃 flake(--maxWorkers=2면 통과).
 - [19] prettier 서식 정리(서식만), vitest testTimeout/hookTimeout 20초로 올려 부하 flake 제거, npm run check 전체 통과.
   남은 일: 없음. 막힌 점 없음.
+- [20] 목 API에 /api/resume(조회·활동 나누기·초안 추가/수정/삭제·확정) 추가, POST /api/experiences와 createExperience 삭제, 경험 summary·시드 이력서·라라테크 자소서 추가, resume.test.ts 추가.
+  남은 일: 21번(ExperienceNew는 지울 때까지 addDraft+confirmDrafts로 임시 연결). 시드 자소서가 2개가 되어 coverLetters.test(목)·CoverLetterWrite.test S5의 생성 자소서 수를 시드 빼고 세도록 고침.
+  막힌 점: 전체 vitest에서 매번 다른 화면 테스트 하나가 가끔 부하 flake로 실패(단독·재실행은 통과).

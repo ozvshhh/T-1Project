@@ -57,8 +57,10 @@ export default function ExperienceNew() {
     setBusy(true)
     let id: string
     try {
-      const res = await api.createExperience({ title: title.trim(), period: period.trim() })
-      id = res.experience.id
+      // 경험은 이력서 활동을 확정해서만 만든다(api.md 4절): 활동 하나를 넣고 바로 확정한다.
+      const { draft } = await api.addDraft({ title: title.trim(), period: period.trim() })
+      const res = await api.confirmDrafts([draft.id])
+      id = res.experiences[0].id
     } catch (err) {
       setError(err instanceof ApiError ? err.message : '요청을 처리하지 못했어요.')
       setBusy(false)
