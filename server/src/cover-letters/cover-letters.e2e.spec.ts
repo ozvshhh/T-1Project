@@ -1,0 +1,250 @@
+import { Server } from 'node:http';
+import * as os from 'node:os';
+import { INestApplication } from '@nestjs/common';
+import { getConnectionToken, MongooseModule } from '@nestjs/mongoose';
+import { Test } from '@nestjs/testing';
+import { MongoMemoryServer } from 'mongodb-memory-server';
+import { Connection, Types } from 'mongoose';
+import request from 'supertest';
+import { AuthModule } from '../auth/auth.module';
+import { AllExceptionsFilter } from '../common/http-exception.filter';
+import { UsersModule } from '../users/users.module';
+import { CoverLettersModule } from './cover-letters.module';
+
+interface CoverLetterBody {
+  id: string;
+  kind: string;
+  title: string | null;
+  body: string | null;
+  target: unknown;
+  items: unknown[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface ErrorBody {
+  error: { code: string; message: string; details?: { field: string; reason: string }[] };
+}
+
+const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// 붙여넣은 자소서는 점검(R9~R12)의 출발점이라, 모양이 api.md 2절과 다르거나 남의 자소서가 보이면 이후 단계가 전부 틀어진다(R1·R7).
+describe('C7-1 /api/cover-letters create·list·patch', () => {
+  const savedSecret = process.env.JWT_SECRET;
+  let mongod: MongoMemoryServer;
+  let app: INestApplication;
+  let connection: Connection;
+  const http = () => request(app.getHttpServer() as Server);
+
+  async function signup(email: string): Promise<{ token: string; userId: string }> {
+    const res = await http()
+      .post('/api/auth/signup')
+      .send({ email, password: 'pass-1234' })
+      .expect(201);
+    const body = res.body as { token: string; user: { id: string } };
+    return { token: body.token, userId: body.user.id };
+  }
+
+  const create = (token: string, body: unknown) =>
+    http().post('/api/cover-letters').set('Authorization', `Bearer ${token}`).send(body as object);
+
+  const patch = (token: string, id: string, body: unknown) =>
+    http().patch(`/api/cover-letters/${id}`).set('Authorization', `Bearer ${token}`).send(body as object);
+
+  const list = async (token: string): Promise<CoverLetterBody[]> => {
+    const res = await http().get('/api/cover-letters').set('Authorization', `Bearer ${token}`).expect(200);
+    return (res.body as { coverLetters: CoverLetterBody[] }).coverLetters;
+  };
+
+  async function createOk(token: string, body: unknown): Promise<CoverLetterBody> {
+    const res = await create(token, body);
+    expect(res.status).toBe(201);
+    return (res.body as { coverLetter: CoverLetterBody }).coverLetter;
+  }
+
+  const expectValidation = (res: request.Response, field: string) => {
+    expect(res.status).toBe(400);
+    const body = res.body as ErrorBody;
+    expect(body.error.code).toBe('VALIDATION');
+    expect(body.error.details?.map((d) => d.field)).toContain(field);
+  };
+
+  const expectNotFound = (res: request.Response) => {
+    expect(res.status).toBe(404);
+    expect((res.body as ErrorBody).error.code).toBe('NOT_FOUND');
+  };
+
+  let a: { token: string; userId: string };
+  let b: { token: string; userId: string };
+
+  beforeAll(async () => {
+    process.env.JWT_SECRET = 'test-secret';
+    mongod = await MongoMemoryServer.create();
+    // 운영 createApp과 같은 prefix·오류 필터로 띄워 실제 경로·본문을 검증한다.
+    const moduleRef = await Test.createTestingModule({
+      imports: [
+        MongooseModule.forRoot(mongod.getUri(), { runtimeAdapters: { os } }),
+        UsersModule,
+        AuthModule,
+        CoverLettersModule,
+      ],
+    }).compile();
+    app = moduleRef.createNestApplication({ logger: false });
+    app.setGlobalPrefix('api', { exclude: ['__health'] });
+    app.useGlobalFilters(new AllExceptionsFilter());
+    await app.init();
+    connection = app.get<Connection>(getConnectionToken());
+    await connection.model('User').syncIndexes();
+  }, 120_000);
+
+  beforeEach(async () => {
+    a = await signup('a@example.com');
+    b = await signup('b@example.com');
+  });
+
+  afterEach(async () => {
+    await connection.collection('users').deleteMany({});
+    await connection.collection('coverLetters').deleteMany({});
+  });
+
+  afterAll(async () => {
+    await app?.close();
+    await mongod?.stop();
+    if (savedSecret === undefined) delete process.env.JWT_SECRET;
+    else process.env.JWT_SECRET = savedSecret;
+  });
+
+  // 프런트는 새 자소서를 바로 점검 화면에 그리므로 kind·빈 문항·null target이 정확한 키로 와야 한다.
+  it('POST returns 201 {coverLetter} as kind pasted with items [] and target null', async () => {
+    const res = await create(a.token, { title: 'A사 지원', body: '저는 축제를 운영했습니다.' });
+
+    expect(res.status).toBe(201);
+    const body = res.body as { coverLetter: Record<string, unknown> };
+    expect(Object.keys(body)).toEqual(['coverLetter']);
+    const cl = body.coverLetter as unknown as CoverLetterBody;
+    expect(Object.keys(cl).sort()).toEqual(
+      ['body', 'createdAt', 'id', 'items', 'kind', 'target', 'title', 'updatedAt'].sort(),
+    );
+    expect(cl.id).toMatch(/^[0-9a-f]{24}$/);
+    expect(cl.kind).toBe('pasted');
+    expect(cl.title).toBe('A사 지원');
+    expect(cl.body).toBe('저는 축제를 운영했습니다.');
+    expect(cl.items).toEqual([]);
+    expect(cl.target).toBeNull();
+    expect(cl.createdAt).toMatch(ISO);
+    expect(cl.updatedAt).toMatch(ISO);
+  });
+
+  // 제목은 선택이라 없이 붙여넣어도 저장돼야 한다(api.md 7절 title?).
+  it('POST without title returns 201 with title null', async () => {
+    const cl = await createOk(a.token, { body: '본문' });
+    expect(cl.title).toBeNull();
+    expect(cl.kind).toBe('pasted');
+  });
+
+  // 빈 자소서는 점검할 문장이 없으므로 저장 전에 막는다(api.md 7절).
+  it.each([
+    ['empty body', { body: '' }],
+    ['whitespace-only body', { body: '   \n\t' }],
+    ['missing body', { title: '제목만' }],
+    ['non-string body', { body: 123 }],
+  ])('POST rejects %s with 400 VALIDATION and saves nothing', async (_label, body) => {
+    expectValidation(await create(a.token, body), 'body');
+    expect(await list(a.token)).toEqual([]);
+  });
+
+  // 목록은 계정별로 분리되고(R1) 방금 고친 것이 맨 앞에 와야 사용자가 이어서 작업할 수 있다.
+  it('GET lists only my cover letters, most recently updated first', async () => {
+    const first = await createOk(a.token, { title: '첫째', body: '하나' });
+    await sleep(10);
+    const second = await createOk(a.token, { title: '둘째', body: '둘' });
+    await createOk(b.token, { title: 'B 것', body: '남의 글' });
+
+    expect((await list(a.token)).map((c) => c.id)).toEqual([second.id, first.id]);
+
+    await sleep(10);
+    expect((await patch(a.token, first.id, { title: '첫째 수정' })).status).toBe(200);
+    expect((await list(a.token)).map((c) => c.id)).toEqual([first.id, second.id]);
+
+    const others = await list(b.token);
+    expect(others).toHaveLength(1);
+    expect(others.map((c) => c.id)).not.toContain(first.id);
+  });
+
+  // 점검 결과를 보고 사용자가 직접 고친 글이 저장되고, 수정 시각이 올라 목록·오래됨 판단에 쓰인다(C4).
+  it('PATCH updates title or body alone and bumps updatedAt', async () => {
+    const cl = await createOk(a.token, { title: '원래 제목', body: '원래 본문' });
+    await sleep(10);
+
+    const r1 = await patch(a.token, cl.id, { title: '새 제목' });
+    expect(r1.status).toBe(200);
+    const after1 = (r1.body as { coverLetter: CoverLetterBody }).coverLetter;
+    expect(after1.title).toBe('새 제목');
+    expect(after1.body).toBe('원래 본문');
+    expect(new Date(after1.updatedAt).getTime()).toBeGreaterThan(new Date(cl.updatedAt).getTime());
+
+    await sleep(10);
+    const r2 = await patch(a.token, cl.id, { body: '고친 본문' });
+    expect(r2.status).toBe(200);
+    const after2 = (r2.body as { coverLetter: CoverLetterBody }).coverLetter;
+    expect(after2.title).toBe('새 제목');
+    expect(after2.body).toBe('고친 본문');
+    expect(new Date(after2.updatedAt).getTime()).toBeGreaterThan(new Date(after1.updatedAt).getTime());
+  });
+
+  // 빈 글로 덮어쓰면 점검할 내용이 사라지므로 400으로 막고 원래 글을 지킨다.
+  it.each([
+    ['empty body', { body: '' }],
+    ['whitespace-only body', { body: '  \n ' }],
+    ['null body', { body: null }],
+  ])('PATCH rejects %s with 400 VALIDATION and keeps the data', async (_label, body) => {
+    const cl = await createOk(a.token, { body: '원래 본문' });
+    expectValidation(await patch(a.token, cl.id, body), 'body');
+    expect((await list(a.token))[0].body).toBe('원래 본문');
+  });
+
+  // 생성한 자소서는 문항별 API로만 고친다: body를 받으면 문항 응답과 어긋난 글이 생긴다(api.md 7절).
+  it('PATCH with body on a generated cover letter returns 400 and keeps it', async () => {
+    const now = new Date();
+    const inserted = await connection.collection('coverLetters').insertOne({
+      userId: new Types.ObjectId(a.userId),
+      kind: 'generated',
+      title: '생성',
+      body: null,
+      target: { preferred: '우대', talent: '인재상' },
+      items: [],
+      createdAt: now,
+      updatedAt: now,
+    });
+    const id = String(inserted.insertedId);
+
+    expectValidation(await patch(a.token, id, { body: 'x' }), 'body');
+    const saved = await connection.collection('coverLetters').findOne({ _id: inserted.insertedId });
+    expect(saved?.body).toBeNull();
+
+    // 제목은 생성한 자소서도 고칠 수 있다(body만 막는다).
+    const ok = await patch(a.token, id, { title: '새 제목' });
+    expect(ok.status).toBe(200);
+    expect((ok.body as { coverLetter: CoverLetterBody }).coverLetter.title).toBe('새 제목');
+  });
+
+  // 남의 자소서·없는 id·잘못된 id를 같은 404로 돌려줘야 다른 사용자의 자소서가 있는지조차 알 수 없다(R1).
+  it('PATCH 404s for others, missing ids and malformed ids without changing data', async () => {
+    const cl = await createOk(a.token, { title: '내 것', body: '내 글' });
+
+    expectNotFound(await patch(b.token, cl.id, { title: '탈취' }));
+    expectNotFound(await patch(a.token, '0123456789abcdef01234567', { title: 'x' }));
+    expectNotFound(await patch(a.token, 'abc', { title: 'x' }));
+    expect((await list(a.token))[0].title).toBe('내 것');
+  });
+
+  // 로그인 전에는 기능을 쓸 수 없다(C3).
+  it('requires a token on every route', async () => {
+    expect((await http().post('/api/cover-letters').send({ body: 'x' })).status).toBe(401);
+    expect((await http().get('/api/cover-letters')).status).toBe(401);
+    expect((await http().patch('/api/cover-letters/0123456789abcdef01234567').send({ title: 'x' })).status).toBe(
+      401,
+    );
+  });
+});

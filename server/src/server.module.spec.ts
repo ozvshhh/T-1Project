@@ -1,6 +1,7 @@
 import { MODULE_METADATA } from '@nestjs/common/constants';
 import { AppModule } from './app.module';
 import { AuthModule } from './auth/auth.module';
+import { CoverLettersModule } from './cover-letters/cover-letters.module';
 import { ExperiencesModule } from './experiences/experiences.module';
 import { mongooseOptionsFromEnv, ServerModule } from './server.module';
 import { UsersModule } from './users/users.module';
@@ -39,5 +40,11 @@ describe('C1-6 server module (DB connection)', () => {
   it('ServerModule imports ExperiencesModule', () => {
     const imports = Reflect.getMetadata(MODULE_METADATA.IMPORTS, ServerModule) as unknown[];
     expect(imports).toEqual(expect.arrayContaining([ExperiencesModule]));
+  });
+
+  // 자소서 API도 DB가 필요해 운영 진입점에서 올린다. 빠지면 /api/cover-letters가 404가 된다.
+  it('ServerModule imports CoverLettersModule', () => {
+    const imports = Reflect.getMetadata(MODULE_METADATA.IMPORTS, ServerModule) as unknown[];
+    expect(imports).toEqual(expect.arrayContaining([CoverLettersModule]));
   });
 });
