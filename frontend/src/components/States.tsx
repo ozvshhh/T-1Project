@@ -2,11 +2,17 @@ import { Link } from 'react-router-dom'
 
 // 모든 화면의 공통 상태 세 가지(screen-spec 0절).
 
-export function Loading({ text = '불러오는 중' }: { text?: string }) {
+// 글자만 두면 흰 화면처럼 보여서, 나올 내용 자리만큼 스켈레톤을 깐다(POLISH S1).
+export function Loading({ text = '불러오는 중', rows = 3 }: { text?: string; rows?: number }) {
   return (
-    <p role="status" className="py-10 text-[15px]">
-      {text}
-    </p>
+    <div className="flex flex-col gap-3 py-6">
+      <p role="status" className="dots text-[15px]">
+        {text}
+      </p>
+      {Array.from({ length: rows }, (_, i) => (
+        <div key={i} aria-hidden className="skeleton h-14" style={{ width: `${100 - i * 12}%` }} />
+      ))}
+    </div>
   )
 }
 

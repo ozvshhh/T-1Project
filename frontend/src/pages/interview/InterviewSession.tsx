@@ -159,10 +159,13 @@ function Room({
     <div className="grid items-start gap-4 lg:grid-cols-[1fr_400px]">
       {/* 왼쪽: 면접관·질문 */}
       <section className="flex flex-col gap-4" aria-label="면접관과 질문">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="label">
-            질문 {number} / 최대 {interview.limits.maxQuestions}
-          </p>
+        <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
+          <div className="flex items-center gap-4">
+            <p className="label tabular-nums">
+              질문 {number} / 최대 {interview.limits.maxQuestions}
+            </p>
+            <ProgressMeter done={number - 1} total={interview.limits.maxQuestions} />
+          </div>
           <Timer startedAt={interview.startedAt} minutes={interview.limits.maxMinutes} />
         </div>
 
@@ -172,12 +175,20 @@ function Room({
             return (
               <div
                 key={p.key}
-                className={`block-card min-h-[140px] justify-between ${speaking ? 'bg-cream' : 'row-pending bg-transparent'}`}
+                className={`block-card min-h-[140px] justify-between transition-colors duration-300 ${
+                  speaking ? 'bg-cream' : 'border-ink/25 border'
+                }`}
               >
-                <p className="label">{speaking ? '말하는 중' : '듣는 중'}</p>
-                <div>
+                <p className="label flex items-center gap-2">
+                  <span
+                    aria-hidden
+                    className={`size-2 rounded-full ${speaking ? 'bg-ink motion-safe:animate-pulse' : 'border-ink/40 border'}`}
+                  />
+                  {speaking ? '말하는 중' : '듣는 중'}
+                </p>
+                <div className={speaking ? '' : 'opacity-50'}>
                   <p className="card-title">{p.label}</p>
-                  <p className="text-[13px]">{p.role}</p>
+                  <p className="mt-1 text-[15px]">{p.role}</p>
                 </div>
               </div>
             )
@@ -185,19 +196,19 @@ function Room({
         </div>
 
         <article className="rounded-block bg-ink text-ink-inverse p-[clamp(28px,4vw,48px)]">
-          <p className="text-[15px]">
+          <p className="flex items-center text-[15px]">
             <span className="text-cream">{question.interviewerLabel}</span>
-            <span className="rounded-pill border-hairline ml-2 border px-2.5 py-0.5 text-[13px]">
+            <span className="rounded-pill border-ink-inverse/30 ml-2 border px-2.5 py-0.5 text-[13px]">
               {question.kind === 'main' ? '본질문' : '꼬리질문'}
             </span>
           </p>
-          <h1 className="mt-4 text-[clamp(24px,2.6vw,34px)] leading-[1.35] tracking-[-0.02em]">
+          <h1 className="mt-5 max-w-[30em] text-[clamp(26px,2.6vw,36px)] leading-[1.4] tracking-[-0.025em]">
             {question.text}
           </h1>
           {basis && (
-            <p className="border-hairline mt-6 border-t pt-4 text-[15px]">
-              <span className="text-lilac">이 질문의 근거</span>
-              <span className="mt-1 block">“{basis}”</span>
+            <p className="border-hairline mt-8 border-t pt-5 text-[15px]">
+              <span className="text-lilac text-[13px]">이 질문의 근거 · 내 자기소개서</span>
+              <span className="mt-1.5 block leading-[1.6] opacity-80">“{basis}”</span>
             </p>
           )}
           <QuestionVoice interviewId={interview.id} questionId={question.id} />
@@ -210,7 +221,7 @@ function Room({
       <section className="flex flex-col gap-4" aria-label="내 답변">
         <CameraPreview />
 
-        <div className="inner-card border-ink flex flex-col gap-4 border">
+        <div className="inner-card border-ink flex flex-col gap-4 border p-6">
           <p className="label">내 답변</p>
 
           {!showAnswerBox && (
@@ -241,12 +252,16 @@ function Room({
           )}
 
           {phase === 'recording' && (
-            <p role="status" className="text-[15px]">
+            <p role="status" className="flex items-center gap-2 text-[15px]">
+              <span
+                aria-hidden
+                className="bg-ink size-2.5 rounded-full motion-safe:animate-pulse"
+              />
               듣는 중이에요. 다 말했으면 '녹음 끝내기'를 누르세요.
             </p>
           )}
           {phase === 'transcribing' && (
-            <p role="status" className="text-[15px]">
+            <p role="status" className="dots text-[15px]">
               말한 내용을 글로 옮기고 있어요
             </p>
           )}
@@ -257,7 +272,7 @@ function Room({
                 답변
               </label>
               {transcriptRaw !== undefined && (
-                <p className="mb-2 text-[13px]">
+                <p className="mb-2 text-[15px]">
                   말한 내용을 글로 옮겼어요. 확인하고 고친 뒤 제출하세요.
                 </p>
               )}
@@ -282,12 +297,12 @@ function Room({
           )}
           {error && <ErrorView message={error.message} onRetry={error.retry} />}
           {phase === 'submitting' && (
-            <p role="status" className="text-[15px]">
+            <p role="status" className="dots text-[15px]">
               다음 질문을 준비하고 있어요
             </p>
           )}
 
-          <div className="border-ink flex flex-wrap gap-2 border-t pt-4">
+          <div className="border-ink/15 flex flex-wrap gap-2 border-t pt-4">
             {showAnswerBox && (
               <button type="button" className="btn btn-primary" onClick={submit} disabled={busy}>
                 답변 제출
@@ -307,11 +322,27 @@ function Room({
               onClick={end}
               disabled={ending}
             >
-              면접 종료
+              {ending ? '끝내는 중' : '면접 종료'}
             </button>
           </div>
         </div>
       </section>
+    </div>
+  )
+}
+
+/** DESIGN.md progress-meter: 칸마다 검정 테두리, 지난 질문은 채운다. */
+function ProgressMeter({ done, total }: { done: number; total: number }) {
+  return (
+    <div aria-hidden className="flex gap-1">
+      {Array.from({ length: total }, (_, i) => (
+        <span
+          key={i}
+          className={`border-ink h-3.5 w-3 border-[1.5px] transition-colors duration-300 ${
+            i < done ? 'bg-ink' : ''
+          }`}
+        />
+      ))}
     </div>
   )
 }
@@ -327,7 +358,7 @@ function Timer({ startedAt, minutes }: { startedAt: string; minutes: number }) {
   const mm = String(Math.floor(left / 60)).padStart(2, '0')
   const ss = String(left % 60).padStart(2, '0')
   return (
-    <p className="text-[15px]">
+    <p className={`rounded-pill px-3 py-1 text-[15px] ${left <= 60 ? 'bg-coral' : ''}`}>
       남은 시간{' '}
       <span className="font-semibold tabular-nums">
         {mm}:{ss}
@@ -366,14 +397,14 @@ function QuestionVoice({ interviewId, questionId }: { interviewId: string; quest
 
   return (
     <div className="mt-6 flex flex-wrap items-center gap-3">
-      <button
-        type="button"
-        onClick={play}
-        className="btn btn-sm border-ink-inverse bg-ink text-ink-inverse border"
-      >
+      <button type="button" onClick={play} className="btn btn-sm btn-on-ink">
         질문 다시 듣기
       </button>
-      {failed && <p className="text-[13px]">소리를 재생하지 못했어요. 질문은 글자로 확인하세요.</p>}
+      {failed && (
+        <p className="text-[15px] opacity-80">
+          소리를 재생하지 못했어요. 질문은 글자로 확인하세요.
+        </p>
+      )}
     </div>
   )
 }
@@ -387,7 +418,7 @@ function CameraPreview() {
 
   return (
     <div
-      className="rounded-block bg-ink relative aspect-[4/3] overflow-hidden"
+      className="rounded-block bg-ink relative aspect-video overflow-hidden"
       aria-label="내 카메라"
     >
       {stream && (
@@ -399,8 +430,13 @@ function CameraPreview() {
           className="size-full -scale-x-100 object-cover"
         />
       )}
-      <span className="rounded-pill bg-ink text-ink-inverse absolute bottom-3 left-3 px-3 py-1 text-[13px]">
-        나 {stream ? '' : '· 카메라 꺼짐'}
+      {!stream && (
+        <span className="text-ink-inverse/50 absolute inset-0 flex items-center justify-center text-[15px]">
+          카메라 꺼짐 · 면접은 그대로 진행돼요
+        </span>
+      )}
+      <span className="rounded-pill bg-ink/70 text-ink-inverse absolute bottom-3 left-3 px-3 py-1 text-[13px]">
+        나
       </span>
     </div>
   )
@@ -409,16 +445,22 @@ function CameraPreview() {
 function TurnLog({ interview }: { interview: Session }) {
   if (interview.turns.length === 0) return null
   return (
-    <details className="inner-card border-ink border" open>
-      <summary className="label cursor-pointer">대화 기록 ({interview.turns.length})</summary>
-      <ol className="mt-4 flex flex-col gap-3">
+    <details className="inner-card border-ink/15 border p-6" open>
+      <summary className="label cursor-pointer select-none">
+        대화 기록 ({interview.turns.length})
+      </summary>
+      <ol className="mt-5 flex flex-col gap-5">
         {interview.turns.map((t) => (
-          <li key={t.question.id} className="flex flex-col gap-1.5 text-[15px]">
-            <p>
-              <b>{t.question.interviewerLabel}</b> {t.question.text}
+          <li key={t.question.id} className="flex flex-col gap-2 text-[15px] leading-[1.6]">
+            <p className="max-w-[85%]">
+              <span className="meta mr-2">{t.question.interviewerLabel}</span>
+              {t.question.text}
             </p>
-            <p className={`rounded-row px-3 py-2 ${t.skipped ? 'row-pending' : 'bg-cream'}`}>
-              <b>나</b> {t.skipped ? '건너뜀' : t.answer?.text}
+            <p
+              className={`rounded-card max-w-[85%] self-end px-4 py-2.5 ${t.skipped ? 'row-pending' : 'bg-cream'}`}
+            >
+              <span className="meta mr-2">나</span>
+              {t.skipped ? '건너뜀' : t.answer?.text}
             </p>
           </li>
         ))}

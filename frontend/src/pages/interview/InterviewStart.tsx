@@ -52,7 +52,7 @@ export default function InterviewStart() {
               {list.data.map((c) => (
                 <label
                   key={c.id}
-                  className={`row cursor-pointer items-center justify-start gap-3 ${
+                  className={`row row-select items-center justify-start gap-3 ${
                     selected === c.id ? 'outline-ink outline-2 -outline-offset-2' : ''
                   }`}
                 >
@@ -65,7 +65,7 @@ export default function InterviewStart() {
                     className="accent-ink size-[18px]"
                   />
                   <span className="flex-1 font-semibold">{c.title}</span>
-                  <span className="text-[13px]">
+                  <span className="meta">
                     {SOURCE_LABEL[c.source]} · {formatDate(c.createdAt)}
                   </span>
                 </label>
@@ -100,10 +100,10 @@ export default function InterviewStart() {
                 disabled={!selected || starting}
                 onClick={onStart}
               >
-                면접 시작
+                {starting ? '준비하는 중' : '면접 시작'}
               </button>
               {starting && (
-                <p role="status" className="text-[15px]">
+                <p role="status" className="dots text-[15px]">
                   질문을 준비하고 있어요
                 </p>
               )}
