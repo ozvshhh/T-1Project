@@ -33,21 +33,31 @@ canvas:
       - 서류 전형 통과율
       - 놓친 마감·일정 건수
   alternatives:
-    # (팀 초안) 대안 이름만 있음. 사용 방식·단점·why_ours는 2-A·2-B에서 채움.
+    # (팀 초안) 단점은 팀 초안. 인터뷰로 확인 예정. why_ours는 2-B에서 채움.
     - how_used: 채용 플랫폼(공고 탐색·즐겨찾기)
-      shortcoming: null
+      shortcoming: >-
+        공고를 찾는 데서 끝나고 지원서 작성은 각 회사 양식으로 따로 해야 한다.
+        플랫폼 밖 지원(자사 채용 사이트, 공기업)은 현황이 흩어진다.
       why_ours: null
     - how_used: 엑셀/노션으로 지원 현황 직접 관리
-      shortcoming: null
+      shortcoming: >-
+        입력·갱신을 전부 손으로 해서 바쁜 시즌일수록 업데이트가 끊긴다.
+        일정은 관리돼도 지원서 맞춤화 부담은 그대로다.
       why_ours: null
     - how_used: 합격 자소서 열람 서비스
-      shortcoming: null
+      shortcoming: >-
+        남의 경험이라 내 소재와 연결해주지 않는다.
+        따라 쓰면 비슷한 글이 되고, 유료인 경우가 많다.
       why_ours: null
     - how_used: 생성형 AI로 자소서 초안 작성
-      shortcoming: null
+      shortcoming: >-
+        내 실제 경험을 모르면 일반적인 문장이 나와 차별성이 없다.
+        건마다 경험을 다시 설명해야 하고, AI 작성 티가 날까 불안하다.
       why_ours: null
     - how_used: 스터디·첨삭(학교 취업센터, 부트캠프 멘토)
-      shortcoming: null
+      shortcoming: >-
+        품질은 좋지만 일정 맞추기와 대기 시간이 길어 매일 생기는 수요를 못 따라간다.
+        소수 핵심 지원 건에만 쓰게 된다.
       why_ours: null
 personas:
   - id: P1
