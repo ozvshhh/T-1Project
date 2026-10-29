@@ -2,13 +2,8 @@ import { BadRequestException } from '@nestjs/common';
 import { asObject } from '../auth/signup.validation';
 import { FILE_CLUE_TYPES, FileClueType } from './clue.schema';
 
-// multer가 메모리에 받은 파일 중 단서가 쓰는 칸만 적는다(디스크 저장소를 쓰지 않으므로 path가 없다).
-export interface UploadedClueFile {
-  originalname: string;
-  mimetype: string;
-  size: number;
-  buffer: Buffer;
-}
+// multer가 메모리에 받은 파일 중 단서가 쓰는 칸만 고른다(디스크 저장소를 쓰지 않으므로 path가 없다).
+export type UploadedClueFile = Pick<Express.Multer.File, 'originalname' | 'mimetype' | 'size' | 'buffer'>;
 
 export interface TextClueInput {
   type: 'text';
