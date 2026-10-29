@@ -6,12 +6,13 @@ import { resetDb } from '@/mocks/db'
 import { handlers } from '@/mocks/handlers'
 
 // 테스트도 개발 서버와 같은 목 API(docs/api.md 형태)로 돈다.
-const server = setupServer(...handlers)
+export const server = setupServer(...handlers)
 
 beforeAll(() => server.listen({ onUnhandledFrame: 'error' }))
 beforeEach(() => resetDb())
 afterEach(() => {
   cleanup()
+  localStorage.clear()
   server.resetHandlers()
 })
 afterAll(() => server.close())

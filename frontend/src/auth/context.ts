@@ -3,10 +3,10 @@ import type { User } from '@/api/types'
 
 export type AuthState = {
   user: User | null
-  /** /api/auth/me 확인이 끝났는지 */
+  /** 토큰이 있으면 /api/auth/me 확인이 끝났는지 */
   ready: boolean
   setUser: (user: User | null) => void
-  logout: () => Promise<void>
+  logout: () => void
 }
 
 export const AuthContext = createContext<AuthState | null>(null)
