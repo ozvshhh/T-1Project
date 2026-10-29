@@ -38,5 +38,5 @@
 - [x] 25. 디자인 J 자소서 상세와 I 문항별 작성 — `wireframes/letter.png`: 왼쪽 큰 자소서 카드, 오른쪽 쓴 경험 카드 세로, 근거 문장·사실 짝 강조. 화면: letter, write.
 - [x] 26. 디자인 K 제출 전 점검 — `wireframes/check.png`: 왼쪽 문장 목록(상태 칩), 가운데 큰 인용 + 질문·답 쌓기 + J1~J4 칩, 아래 입력칸. 화면: check.
 - [x] 27. 디자인 A 소개·C 홈·D 경험 목록: 와이어프레임 원칙(POLISH H5·H6·M2·M5)으로 맞춘다. 화면: intro, home, experiences.
-- [ ] 28. 디자인 B 로그인·G 붙여넣기·H 작성 시작·L 없는 주소: 같은 원칙으로 맞춘다. 화면: login, paste, new.
+- [x] 28. 디자인 B 로그인·G 붙여넣기·H 작성 시작·L 없는 주소: 같은 원칙으로 맞춘다. 화면: login, paste, new.
 - [ ] 29. 2차 마무리: `npm run check` 전체 통과, `npm run shot -- --tag final`로 모든 화면을 찍어 Read로 열어 보고 POLISH 1·2절에 걸리는 곳이 없는지 확인한다.
