@@ -15,3 +15,5 @@
 - [3] 세 번째 실행도 같은 이유로 중단(fix_plan 3번·client.test.ts 모두 그대로). 사람이 fix_plan 3번에 client.test.ts 로그인 계정 수정을 적거나 직접 고쳐야 진행 가능.
 - [3] 목 db를 api.md 모양·mock-data 시드(seeker 계정, 경험 2개, 자소서 1개)로 다시 쓰고 계정·경험·단서·대화·사실 확정/직접 추가 경로 추가, client.test.ts 로그인 계정 교체, handlers.test.ts 추가.
   남은 일: 4번 목 API ② 자소서(db.coverLetters 시드는 이미 있음). 막힌 점 없음(setup.ts server export·render 토큰 도우미는 2번에서 이미 됨, prettier는 승인 필요라 18번에서).
+- [4] 자소서 목 경로(붙여넣기·조회·수정·작성 시작·추천·카드 고르기·응답·고친 응답 409) 추가, coverLetters.test.ts 추가.
+  남은 일: 5번 목 API ③ 점검(자소서 수정·문항 응답 수정·생성 때 점검 stale 처리를 자소서 경로에 더해야 함). 막힌 점 없음.

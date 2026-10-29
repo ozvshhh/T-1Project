@@ -1,7 +1,7 @@
 // docs/api.md를 따르는 목 API. 실제 서버가 붙으면 VITE_API_MOCK=false로 끈다.
-// AI 결과는 specs/mock-data.md 「AI 고정 동작」대로 고정한다. 4·5번 작업에서 자소서·점검 경로를 더한다.
+// AI 결과는 specs/mock-data.md 「AI 고정 동작」대로 고정한다. 5번 작업에서 점검 경로를 더한다.
 import { delay, http, HttpResponse } from 'msw'
-import type { Fact, FactSource, Item, Message } from '@/api/types'
+import type { CoverLetterItem, Fact, FactSource, Item, Message } from '@/api/types'
 import {
   emptyCard,
   emptyStatus,
@@ -13,7 +13,9 @@ import {
   now,
   save,
   saveFile,
+  type StoredCoverLetter,
   type StoredExperience,
+  toCoverLetter,
   toExperience,
   tokenFor,
   userFromToken,
@@ -405,9 +407,267 @@ const factHandlers = [
   }),
 ]
 
+/** 토큰의 계정이 가진 자소서. 다른 계정의 것이면 null(→ 404, api.md 1절). */
+function findCoverLetter(request: Request, id: string) {
+  const user = userFromToken(request.headers.get('Authorization'))
+  if (!user) return { user: null, coverLetter: null }
+  const coverLetter = getDb().coverLetters.find((c) => c.id === id && c.userId === user.id) ?? null
+  return { user, coverLetter }
+}
+
+function findLetterItem(request: Request, id: string, itemId: string) {
+  const { user, coverLetter } = findCoverLetter(request, id)
+  const item = coverLetter?.items.find((i) => i.id === itemId) ?? null
+  return { user, coverLetter, item }
+}
+
+function touchLetter(coverLetter: StoredCoverLetter) {
+  coverLetter.updatedAt = now()
+  save()
+}
+
+const optionalTitle = (title: unknown) =>
+  typeof title === 'string' && title.trim() ? title.trim() : null
+
+const confirmedFacts = (experience: StoredExperience) => ITEMS.flatMap((i) => experience.card[i])
+const hasConfirmedFacts = (experience: StoredExperience) => confirmedFacts(experience).length > 0
+const userExperiences = (userId: string) => getDb().experiences.filter((e) => e.userId === userId)
+
+// 카드 추천 이유(mock-data.md 「카드 추천」).
+const TEAM_REASON = '팀장으로 범위를 정한 경험이 문항과 맞아요'
+const BUILD_REASON = '직접 만든 기능과 결과가 문항과 맞아요'
+const HACKATHON_ID = 'seed-exp-hackathon'
+
+/** 확정 사실이 있는 경험 모두를 추천한다. 협업·팀 문항이면 해커톤 카드를 앞에 두고 팀장 이유를 붙인다. */
+function recommendFor(question: string, experiences: StoredExperience[]) {
+  const team = /협업|팀/.test(question)
+  const cards = experiences.filter(hasConfirmedFacts)
+  if (team) cards.sort((a, b) => Number(b.id === HACKATHON_ID) - Number(a.id === HACKATHON_ID))
+  return cards.map((e) => ({
+    experienceId: e.id,
+    reason: team && e.id === HACKATHON_ID ? TEAM_REASON : BUILD_REASON,
+  }))
+}
+
+/** 고른 카드의 확정 사실만 이어 붙여 한 문단으로 만든다. 카드에 없는 숫자는 넣지 않는다. */
+function answerFrom(experiences: StoredExperience[]) {
+  return experiences
+    .flatMap(confirmedFacts)
+    .map((f) => f.text.trim())
+    .map((text) => (/[.!?]$/.test(text) ? text : `${text}.`))
+    .join(' ')
+}
+
+const noConfirmedFacts = (experienceIds: string[] = []) =>
+  HttpResponse.json(
+    {
+      error: {
+        code: 'NO_CONFIRMED_FACTS',
+        message: '확정된 사실이 있는 경험 카드가 없어요.',
+        details: experienceIds.map((experienceId) => ({
+          field: 'experienceIds',
+          reason: experienceId,
+        })),
+      },
+    },
+    { status: 400 },
+  )
+
+// api.md 7·8절. 추천·응답은 mock-data.md 고정 동작.
+const coverLetterHandlers = [
+  http.post('/api/cover-letters', async ({ request }) => {
+    const user = userFromToken(request.headers.get('Authorization'))
+    if (!user) return unauthenticated()
+    const { title, body } = await readJson(request)
+    if (isBlank(body)) return invalid('body', '본문을 입력해 주세요.')
+    const at = now()
+    const coverLetter: StoredCoverLetter = {
+      id: newId(),
+      userId: user.id,
+      kind: 'pasted',
+      title: optionalTitle(title),
+      body: body as string,
+      target: null,
+      items: [],
+      createdAt: at,
+      updatedAt: at,
+    }
+    getDb().coverLetters.push(coverLetter)
+    save()
+    return HttpResponse.json({ coverLetter: toCoverLetter(coverLetter) }, { status: 201 })
+  }),
+
+  http.get('/api/cover-letters', ({ request }) => {
+    const user = userFromToken(request.headers.get('Authorization'))
+    if (!user) return unauthenticated()
+    const coverLetters = getDb()
+      .coverLetters.filter((c) => c.userId === user.id)
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+      .map(toCoverLetter)
+    return HttpResponse.json({ coverLetters })
+  }),
+
+  http.post('/api/cover-letters/generate', async ({ request }) => {
+    const user = userFromToken(request.headers.get('Authorization'))
+    if (!user) return unauthenticated()
+    const { title, preferred, talent, questions } = await readJson(request)
+    if (isBlank(preferred)) return invalid('preferred', '필수 입력이에요.')
+    if (isBlank(talent)) return invalid('talent', '필수 입력이에요.')
+    const filled = Array.isArray(questions)
+      ? questions.filter((q): q is string => !isBlank(q)).map((q) => q.trim())
+      : []
+    if (filled.length === 0) return invalid('questions', '필수 입력이에요.')
+    const at = now()
+    const coverLetter: StoredCoverLetter = {
+      id: newId(),
+      userId: user.id,
+      kind: 'generated',
+      title: optionalTitle(title),
+      body: null,
+      target: { preferred: (preferred as string).trim(), talent: (talent as string).trim() },
+      items: filled.map(
+        (question): CoverLetterItem => ({
+          id: newId(),
+          question,
+          recommendations: [],
+          selectedExperienceIds: [],
+          answer: null,
+          usedExperienceIds: [],
+          answerEdited: false,
+        }),
+      ),
+      createdAt: at,
+      updatedAt: at,
+    }
+    getDb().coverLetters.push(coverLetter)
+    save()
+    return HttpResponse.json({ coverLetter: toCoverLetter(coverLetter) }, { status: 201 })
+  }),
+
+  http.get<{ id: string }>('/api/cover-letters/:id', ({ request, params }) => {
+    const { user, coverLetter } = findCoverLetter(request, params.id)
+    if (!user) return unauthenticated()
+    if (!coverLetter) return notFound()
+    // 문항 응답들이 근거로 쓴 경험 카드(R13).
+    const used = new Set(coverLetter.items.flatMap((i) => i.usedExperienceIds))
+    const experiences = userExperiences(user.id)
+      .filter((e) => used.has(e.id))
+      .map(toExperience)
+    return HttpResponse.json({ coverLetter: toCoverLetter(coverLetter), experiences })
+  }),
+
+  http.patch<{ id: string }>('/api/cover-letters/:id', async ({ request, params }) => {
+    const { user, coverLetter } = findCoverLetter(request, params.id)
+    if (!user) return unauthenticated()
+    if (!coverLetter) return notFound()
+    const { title, body } = await readJson(request)
+    if (body !== undefined) {
+      // 생성한 자소서의 응답은 문항별 API로 고친다.
+      if (coverLetter.kind === 'generated')
+        return invalid('body', '작성한 자소서는 문항별로 고쳐 주세요.')
+      if (isBlank(body)) return invalid('body', '본문을 입력해 주세요.')
+      coverLetter.body = body as string
+    }
+    if (title !== undefined) coverLetter.title = optionalTitle(title)
+    touchLetter(coverLetter)
+    return HttpResponse.json({ coverLetter: toCoverLetter(coverLetter) })
+  }),
+
+  http.patch<{ id: string; itemId: string }>(
+    '/api/cover-letters/:id/items/:itemId',
+    async ({ request, params }) => {
+      const { user, coverLetter, item } = findLetterItem(request, params.id, params.itemId)
+      if (!user) return unauthenticated()
+      if (!coverLetter || !item) return notFound()
+      const { answer } = await readJson(request)
+      if (isBlank(answer)) return invalid('answer', '응답을 입력해 주세요.')
+      item.answer = answer as string
+      item.answerEdited = true
+      touchLetter(coverLetter)
+      return HttpResponse.json({ item })
+    },
+  ),
+
+  http.post<{ id: string; itemId: string }>(
+    '/api/cover-letters/:id/items/:itemId/recommendations',
+    async ({ request, params }) => {
+      const { user, coverLetter, item } = findLetterItem(request, params.id, params.itemId)
+      if (!user) return unauthenticated()
+      if (!coverLetter || !item) return notFound()
+      const experiences = userExperiences(user.id)
+      if (!experiences.some(hasConfirmedFacts)) return noConfirmedFacts()
+      await wait(AI_DELAY)
+      item.recommendations = recommendFor(item.question, experiences)
+      touchLetter(coverLetter)
+      return HttpResponse.json({ item })
+    },
+  ),
+
+  http.put<{ id: string; itemId: string }>(
+    '/api/cover-letters/:id/items/:itemId/experiences',
+    async ({ request, params }) => {
+      const { user, coverLetter, item } = findLetterItem(request, params.id, params.itemId)
+      if (!user) return unauthenticated()
+      if (!coverLetter || !item) return notFound()
+      const { experienceIds } = await readJson(request)
+      if (!Array.isArray(experienceIds) || experienceIds.some((id) => typeof id !== 'string'))
+        return invalid('experienceIds', '카드를 골라 주세요.')
+      const ids = [...new Set(experienceIds as string[])]
+      const mine = userExperiences(user.id)
+      const chosen: StoredExperience[] = []
+      for (const id of ids) {
+        const experience = mine.find((e) => e.id === id)
+        if (!experience) return notFound()
+        chosen.push(experience)
+      }
+      const empty = chosen.filter((e) => !hasConfirmedFacts(e))
+      if (empty.length > 0) return noConfirmedFacts(empty.map((e) => e.id))
+
+      item.selectedExperienceIds = ids
+      // 이미 다른 문항에 쓴 카드는 막지 않고 알리기만 한다.
+      const usedElsewhere = ids
+        .map((experienceId) => ({
+          experienceId,
+          itemIds: coverLetter.items
+            .filter((o) => o.id !== item.id && o.selectedExperienceIds.includes(experienceId))
+            .map((o) => o.id),
+        }))
+        .filter((u) => u.itemIds.length > 0)
+      touchLetter(coverLetter)
+      return HttpResponse.json({ item, usedElsewhere })
+    },
+  ),
+
+  http.post<{ id: string; itemId: string }>(
+    '/api/cover-letters/:id/items/:itemId/answer',
+    async ({ request, params }) => {
+      const { user, coverLetter, item } = findLetterItem(request, params.id, params.itemId)
+      if (!user) return unauthenticated()
+      if (!coverLetter || !item) return notFound()
+      const { confirmOverwrite } = await readJson(request)
+      if (item.selectedExperienceIds.length === 0)
+        return invalid('selectedExperienceIds', '이 문항에 쓸 카드를 골라 주세요.')
+      // 사용자가 고친 응답은 확인을 받은 뒤에만 덮어쓴다(C4).
+      if (item.answer !== null && item.answerEdited && confirmOverwrite !== true)
+        return fail(409, 'OVERWRITE_CONFIRM_REQUIRED', '고친 내용이 새 응답으로 바뀌어요.')
+      await wait(AI_DELAY)
+      const mine = userExperiences(user.id)
+      const used = item.selectedExperienceIds
+        .map((id) => mine.find((e) => e.id === id))
+        .filter((e): e is StoredExperience => e !== undefined)
+      item.answer = answerFrom(used)
+      item.usedExperienceIds = used.map((e) => e.id)
+      item.answerEdited = false
+      touchLetter(coverLetter)
+      return HttpResponse.json({ item })
+    },
+  ),
+]
+
 export const handlers = [
   ...authHandlers,
   ...experienceHandlers,
   ...conversationHandlers,
   ...factHandlers,
+  ...coverLetterHandlers,
 ]

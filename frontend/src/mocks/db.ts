@@ -236,6 +236,11 @@ export function toExperience({ userId: _userId, messages: _messages, ...experien
   return experience
 }
 
+/** 저장용 자소서에서 응답 모양(api.md CoverLetter)만 꺼낸다. */
+export function toCoverLetter({ userId: _userId, ...coverLetter }: StoredCoverLetter): CoverLetter {
+  return coverLetter
+}
+
 /** 목 토큰: `mock-<userId>`. 실제 서버의 JWT 자리다. */
 export function tokenFor(userId: string) {
   return `mock-${userId}`
