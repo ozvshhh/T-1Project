@@ -3,6 +3,7 @@
 set -u
 cd "$(dirname "$0")/../.." || exit 1
 R=server/ralph
+ABS="$(pwd)"   # 권한 규칙용 절대 경로. 역할이 cd 하면 ./ 상대 규칙이 어긋난다(2026-10-30)
 CLAIMS=$(node $R/check.mjs count)
 DEFAULT_MAX=$(( CLAIMS * 4 + 2 ))              # 위키 관찰: 상한은 주장 수 × 3보다 크게
 MAX="${1:-$DEFAULT_MAX}"
@@ -14,11 +15,11 @@ echo "주장 ${CLAIMS}개, 최대 반복 ${MAX}"
 
 # npm은 저장소 루트에서 `npm --prefix server ...` 또는 `cd server && npm ...` 형태만 허용(규칙은 명령 앞부분 일치).
 COMMON=(Read Glob Grep "Bash(ls:*)" "Bash(cat:*)" "Bash(npm --prefix server:*)" "Bash(cd server && npm:*)" "Bash(npm run:*)" "Bash(npm test:*)" "Bash(npm ci:*)" "Bash(npm install:*)" "Bash(git status:*)" "Bash(git diff:*)" "Bash(git log:*)" "Bash(git show:*)")
-VERIFY_TOOLS=("${COMMON[@]}" "Edit(./$R/reviews/*)" "Bash(docker compose:*)" "Bash(curl:*)" "Bash(sleep:*)")
+VERIFY_TOOLS=("${COMMON[@]}" "Edit(/$ABS/$R/reviews/*)" "Bash(docker compose:*)" "Bash(curl:*)" "Bash(sleep:*)")
 FIX_TOOLS=("${COMMON[@]}" Write Edit "Bash(npx nest:*)" "Bash(cd server && npx:*)" "Bash(mkdir:*)" "Bash(git rm:*)" "Bash(git add:*)" "Bash(git commit:*)")
-FIX_DENY=("Edit(./$R/**)" "Edit(./docs/**)" "Edit(./frontend/**)" "Edit(./e2e/**)" WebSearch WebFetch)
-# 파일 경로 규칙은 ./로 시작해야 먹힌다(Edit 규칙이 Write도 덮음). ./ 없으면 스윕의 Write가 막혔다(2026-10-30).
-CONFIRM_TOOLS=("${COMMON[@]}" "Edit(./$R/confirms/*)")
+FIX_DENY=("Edit(/$ABS/$R/**)" "Edit(/$ABS/docs/**)" "Edit(/$ABS/frontend/**)" "Edit(/$ABS/e2e/**)" WebSearch WebFetch)
+# 파일 경로 규칙은 //절대경로 형식(Edit 규칙이 Write도 덮음). 접두어 없음·./ 상대는 역할이 cd 하면 막혔다(2026-10-30).
+CONFIRM_TOOLS=("${COMMON[@]}" "Edit(/$ABS/$R/confirms/*)")
 
 for i in $(seq 1 "$MAX"); do
   NEXT=$(node $R/check.mjs next)
