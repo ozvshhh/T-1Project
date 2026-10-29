@@ -1,50 +1,49 @@
 import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api, ApiError } from '@/api/client'
-import { PageTitle } from '@/components/States'
+import { StageBlock } from '@/components/StageBlock'
 
-export default function CoverLetterNew() {
+export default function CoverLetterPaste() {
   const navigate = useNavigate()
   const [title, setTitle] = useState('')
   const [body, setBody] = useState('')
-  const [error, setError] = useState<string | null>(null)
+  const [submitted, setSubmitted] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
+    setSubmitted(true)
     setError(null)
-    if (!body.trim()) {
-      setError('본문이 비어 있어요. 자기소개서 글을 붙여 넣어 주세요.')
-      return
-    }
+    if (!body.trim()) return
     setBusy(true)
     try {
       const { coverLetter } = await api.createCoverLetter({
         title: title.trim() || undefined,
         body,
       })
-      navigate(`/cover-letters?id=${coverLetter.id}`)
+      navigate(`/cover-letters/${coverLetter.id}`)
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : '저장하지 못했어요.')
-    } finally {
+      setError(err instanceof ApiError ? err.message : '요청을 처리하지 못했어요.')
       setBusy(false)
     }
   }
 
   return (
-    <main className="wrap">
-      <PageTitle eyebrow="02 자기소개서" title="자기소개서 등록" />
-      <form onSubmit={onSubmit} noValidate className="flex max-w-[880px] flex-col gap-5">
+    <main className="wrap grid gap-4 pt-12">
+      <StageBlock stage="coverLetter">
+        <h1 className="h2">쓴 자소서 붙여넣기</h1>
+      </StageBlock>
+      <form onSubmit={onSubmit} noValidate className="flex flex-col gap-5 py-6">
         <div>
           <label htmlFor="cl-title" className="label mb-2 block">
-            제목 <span className="font-normal">(선택)</span>
+            제목
           </label>
           <input
             id="cl-title"
             className="field"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            placeholder="비워 두면 '자기소개서 N'으로 저장돼요"
           />
         </div>
         <div>
@@ -53,18 +52,14 @@ export default function CoverLetterNew() {
           </label>
           <textarea
             id="cl-body"
-            rows={16}
-            className="field resize-y leading-[1.7]"
+            className="field"
+            rows={12}
             value={body}
             onChange={(e) => setBody(e.target.value)}
-            placeholder="이미 쓴 자기소개서 글을 붙여 넣으세요"
           />
-          {error && (
-            <p role="alert" className="field-error">
-              {error}
-            </p>
-          )}
+          {submitted && !body.trim() && <p className="field-error">본문을 입력해 주세요.</p>}
         </div>
+        {error && <p className="field-error">{error}</p>}
         <div>
           <button type="submit" className="btn btn-primary" disabled={busy}>
             저장
