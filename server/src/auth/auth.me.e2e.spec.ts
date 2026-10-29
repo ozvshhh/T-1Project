@@ -163,7 +163,8 @@ describe('C3-3 GET /api/auth/me and global JWT guard', () => {
 
   // 만료는 실제 설정 경로(JWT_EXPIRES_IN)로 발급한 토큰으로 확인해야 운영에서도 만료가 지켜진다.
   it('rejects a token that expired under a short JWT_EXPIRES_IN', async () => {
-    process.env.JWT_EXPIRES_IN = '1s';
+    // 1s면 느린 CI에서 가입(bcrypt) 사이에 이미 만료돼 「발급 직후 200」이 가끔 실패했다. 여유를 두고 3s.
+    process.env.JWT_EXPIRES_IN = '3s';
     let shortApp: INestApplication;
     try {
       shortApp = await buildApp();
@@ -174,8 +175,8 @@ describe('C3-3 GET /api/auth/me and global JWT guard', () => {
     // 발급 직후에는 통과해야 거절 이유가 만료임을 보장한다.
     await http(shortApp).get('/api/auth/me').set('Authorization', `Bearer ${token}`).expect(200);
 
-    // exp는 초 단위라 경계를 확실히 넘도록 2.1초 기다린다.
-    await new Promise((resolve) => setTimeout(resolve, 2100));
+    // exp는 초 단위라 경계를 확실히 넘도록 4.1초 기다린다.
+    await new Promise((resolve) => setTimeout(resolve, 4100));
 
     expectUnauthenticated(
       await http(shortApp).get('/api/auth/me').set('Authorization', `Bearer ${token}`),
