@@ -1,7 +1,14 @@
 // docs/api.md를 따르는 목 API. 실제 서버가 붙으면 VITE_API_MOCK=false로 끈다.
-// AI 결과는 specs/mock-data.md 「AI 고정 동작」대로 고정한다. 5번 작업에서 점검 경로를 더한다.
+// AI 결과는 specs/mock-data.md 「AI 고정 동작」대로 고정한다.
 import { delay, http, HttpResponse } from 'msw'
-import type { CoverLetterItem, Fact, FactSource, Item, Message } from '@/api/types'
+import type {
+  CoverLetterItem,
+  Fact,
+  FactSource,
+  Item,
+  JudgeResult,
+  Message,
+} from '@/api/types'
 import {
   emptyCard,
   emptyStatus,
@@ -13,8 +20,12 @@ import {
   now,
   save,
   saveFile,
+  type StoredCheck,
+  type StoredCheckSentence,
   type StoredCoverLetter,
   type StoredExperience,
+  toCheck,
+  toCheckSentence,
   toCoverLetter,
   toExperience,
   tokenFor,
@@ -426,6 +437,13 @@ function touchLetter(coverLetter: StoredCoverLetter) {
   save()
 }
 
+/** 자소서가 바뀌면 그 자소서의 기존 점검은 모두 오래됨이 된다(api.md 9절). */
+function markChecksStale(coverLetter: StoredCoverLetter) {
+  for (const check of getDb().checks) {
+    if (check.coverLetterId === coverLetter.id) check.stale = true
+  }
+}
+
 const optionalTitle = (title: unknown) =>
   typeof title === 'string' && title.trim() ? title.trim() : null
 
@@ -569,6 +587,7 @@ const coverLetterHandlers = [
       coverLetter.body = body as string
     }
     if (title !== undefined) coverLetter.title = optionalTitle(title)
+    markChecksStale(coverLetter)
     touchLetter(coverLetter)
     return HttpResponse.json({ coverLetter: toCoverLetter(coverLetter) })
   }),
@@ -583,6 +602,7 @@ const coverLetterHandlers = [
       if (isBlank(answer)) return invalid('answer', '응답을 입력해 주세요.')
       item.answer = answer as string
       item.answerEdited = true
+      markChecksStale(coverLetter)
       touchLetter(coverLetter)
       return HttpResponse.json({ item })
     },
@@ -658,8 +678,337 @@ const coverLetterHandlers = [
       item.answer = answerFrom(used)
       item.usedExperienceIds = used.map((e) => e.id)
       item.answerEdited = false
+      markChecksStale(coverLetter)
       touchLetter(coverLetter)
       return HttpResponse.json({ item })
+    },
+  ),
+]
+
+type JudgeId = JudgeResult['id']
+type SentenceRule = {
+  text: string
+  question: string
+  criteria: JudgeId[]
+  factItem: Item
+  experienceId: string | null
+}
+
+const CAPSTONE_ID = 'seed-exp-capstone'
+
+// 시드 자소서에서 고르는 네 문장과 첫 질문·판정 대상 기준(mock-data.md 「점검 문장 고르기」).
+// 후보 항목·경험은 문장이 어느 경험의 어느 항목 이야기인지에 맞춘다.
+const SEED_SENTENCE_RULES: SentenceRule[] = [
+  {
+    text: '저는 캡스톤디자인에서 학과 공지 알림 앱을 개발하며 데이터 기반으로 문제를 해결했습니다.',
+    question: "여기서 '데이터 기반'은 어떤 데이터를 어떤 도구로 본 건가요?",
+    criteria: ['J3', 'J4'],
+    factItem: 'action',
+    experienceId: CAPSTONE_ID,
+  },
+  {
+    text: '공지 크롤러를 설계해 학생들의 공지 확인율을 40% 높였고,',
+    question: '40%는 무엇과 비교해, 어느 기간에, 어떻게 잰 값인가요?',
+    criteria: ['J1', 'J2', 'J4'],
+    factItem: 'result',
+    experienceId: CAPSTONE_ID,
+  },
+  {
+    text: '팀을 주도해 일정 안에 배포를 마쳤습니다.',
+    question: '팀을 주도했다고 하셨는데, 팀에서 본인이 직접 한 일은 무엇이었나요?',
+    criteria: ['J2', 'J3'],
+    factItem: 'role',
+    experienceId: CAPSTONE_ID,
+  },
+  {
+    text: '교내 해커톤에서는 팀장으로서 동아리 회비 정산 서비스를 기획해 수상권에 근접한 성과를 거두었습니다.',
+    question: "'수상권에 근접한 성과'는 실제로 어떤 결과였나요?",
+    criteria: ['J3', 'J4'],
+    factItem: 'result',
+    experienceId: HACKATHON_ID,
+  },
+]
+
+const JUDGE_ORDER: JudgeId[] = ['J1', 'J2', 'J3', 'J4']
+const UNKNOWN_ANSWER = /재지|모르|기억|없었/
+const ENOUGH_LENGTH = 40
+const FOLLOW_UP_QUESTION = '조금 더 구체적으로, 직접 한 행동과 확인한 결과를 말해 주세요.'
+const FOLLOW_UPS = 3
+
+const splitSentences = (text: string) =>
+  (text.match(/[^.!?]+[.!?]*/g) ?? []).map((s) => s.trim()).filter((s) => s !== '')
+
+/** 시드가 아닌 문장: 숫자·`주도`·`기반`·`성과`가 들면 고른다. 기준은 시드 문장의 짝을 따른다. */
+function genericRule(sentence: string): SentenceRule | null {
+  const number = /\d+(?:\.\d+)?%?/.exec(sentence)
+  const lead = sentence.includes('주도')
+  const base = sentence.includes('기반')
+  const outcome = sentence.includes('성과')
+  if (!number && !lead && !base && !outcome) return null
+
+  const criteria: JudgeId[] = [
+    ...(number ? (['J1', 'J2', 'J4'] as const) : []),
+    ...(lead ? (['J2', 'J3'] as const) : []),
+    ...(base || outcome ? (['J3', 'J4'] as const) : []),
+  ]
+
+  const [question, factItem]: [string, Item] = number
+    ? [`이 숫자(${number[0]})는 무엇과 비교해, 어느 기간에, 어떻게 잰 값인가요?`, 'result']
+    : lead
+      ? ['주도했다고 하셨는데, 본인이 직접 한 일은 무엇이었나요?', 'role']
+      : base
+        ? ["여기서 '기반'은 무엇을 어떤 도구로 본 건가요?", 'action']
+        : ["여기서 '성과'는 실제로 어떤 결과였나요?", 'result']
+
+  // 캡스톤·해커톤 중 어느 쪽 이야기인지 알 수 있으면 그 경험을 후보 경험으로 둔다.
+  const experienceId = /캡스톤|공지/.test(sentence)
+    ? CAPSTONE_ID
+    : /해커톤|회비/.test(sentence)
+      ? HACKATHON_ID
+      : null
+
+  return {
+    text: sentence,
+    question,
+    criteria: JUDGE_ORDER.filter((id) => criteria.includes(id)),
+    factItem,
+    experienceId,
+  }
+}
+
+function pickRules(text: string): SentenceRule[] {
+  return splitSentences(text).flatMap((sentence) => {
+    const seeded = SEED_SENTENCE_RULES.filter((rule) => sentence.includes(rule.text))
+    if (seeded.length > 0) return seeded
+    const rule = genericRule(sentence)
+    return rule ? [rule] : []
+  })
+}
+
+/** 붙여넣은 자소서는 본문, 생성한 자소서는 문항 응답마다 주장 문장을 고른다. */
+function pickSentences(coverLetter: StoredCoverLetter, userId: string): StoredCheckSentence[] {
+  const mine = new Set(userExperiences(userId).map((e) => e.id))
+  const sources =
+    coverLetter.kind === 'pasted'
+      ? [{ text: coverLetter.body ?? '', itemId: null, experienceId: undefined }]
+      : coverLetter.items
+          .filter((i) => i.answer !== null)
+          .map((i) => ({
+            text: i.answer ?? '',
+            itemId: i.id,
+            // 생성 자소서의 문장이면 그 문항의 근거 카드 하나를 제안한다.
+            experienceId: i.usedExperienceIds[0] ?? null,
+          }))
+  return sources.flatMap(({ text, itemId, experienceId }) =>
+    pickRules(text).map((rule) => {
+      const suggested = experienceId === undefined ? rule.experienceId : experienceId
+      return {
+        id: newId(),
+        text: rule.text,
+        coverLetterItemId: itemId,
+        status: 'pending' as const,
+        turns: [],
+        followUpsLeft: FOLLOW_UPS,
+        criteria: rule.criteria,
+        factItem: rule.factItem,
+        experienceId: suggested && mine.has(suggested) ? suggested : null,
+      }
+    }),
+  )
+}
+
+/** 문장 첫 질문은 그 문장을 고를 때 쓴 규칙의 질문이다. */
+function firstQuestion(sentence: StoredCheckSentence) {
+  const seeded = SEED_SENTENCE_RULES.find((rule) => rule.text === sentence.text)
+  return seeded?.question ?? genericRule(sentence.text)?.question ?? FOLLOW_UP_QUESTION
+}
+
+/** 답을 판정하고 문장 상태를 바꾼다(mock-data.md 「점검 답 판정」). */
+function judgeAnswer(sentence: StoredCheckSentence, text: string) {
+  const turn = sentence.turns[sentence.turns.length - 1]
+  turn.answer = text
+  // 모름 판정을 J1~J4보다 먼저 한다(R11).
+  if (UNKNOWN_ANSWER.test(text)) {
+    sentence.status = 'unknown'
+    return
+  }
+  if (text.trim().length >= ENOUGH_LENGTH) {
+    turn.judge = sentence.criteria.map((id) => ({ id, result: 'met' }))
+    sentence.status = 'explained'
+    return
+  }
+  turn.judge = sentence.criteria.map((id, i) => ({ id, result: i === 0 ? 'missing' : 'met' }))
+  if (sentence.followUpsLeft > 0) {
+    sentence.turns.push({ question: FOLLOW_UP_QUESTION, answer: null, judge: [] })
+    sentence.followUpsLeft -= 1
+  } else {
+    sentence.status = 'needs_more'
+  }
+}
+
+/** 토큰의 계정이 가진 점검. 다른 계정의 것이면 null(→ 404, api.md 1절). */
+function findCheck(request: Request, checkId: string) {
+  const user = userFromToken(request.headers.get('Authorization'))
+  if (!user) return { user: null, check: null }
+  const check = getDb().checks.find((c) => c.id === checkId && c.userId === user.id) ?? null
+  return { user, check }
+}
+
+function findSentence(request: Request, checkId: string, sentenceId: string) {
+  const { user, check } = findCheck(request, checkId)
+  const sentence = check?.sentences.find((s) => s.id === sentenceId) ?? null
+  return { user, check, sentence }
+}
+
+const checkStale = () =>
+  fail(409, 'CHECK_STALE', '자소서가 바뀌어 이 점검은 더 진행할 수 없어요.')
+const candidateResolved = () =>
+  fail(409, 'CANDIDATE_RESOLVED', '이미 저장하거나 버린 후보예요.')
+
+// api.md 9절. 문장 고르기·판정은 mock-data.md 고정 동작.
+const checkHandlers = [
+  http.post<{ id: string }>('/api/cover-letters/:id/checks', async ({ request, params }) => {
+    const { user, coverLetter } = findCoverLetter(request, params.id)
+    if (!user) return unauthenticated()
+    if (!coverLetter) return notFound()
+    await wait(AI_DELAY)
+    const check: StoredCheck = {
+      id: newId(),
+      userId: user.id,
+      coverLetterId: coverLetter.id,
+      stale: false,
+      sentences: pickSentences(coverLetter, user.id),
+      candidates: [],
+      resolvedCandidateIds: [],
+      createdAt: now(),
+    }
+    getDb().checks.push(check)
+    save()
+    return HttpResponse.json({ check: toCheck(check) }, { status: 201 })
+  }),
+
+  http.get<{ id: string }>('/api/cover-letters/:id/checks', ({ request, params }) => {
+    const { user, coverLetter } = findCoverLetter(request, params.id)
+    if (!user) return unauthenticated()
+    if (!coverLetter) return notFound()
+    // 최신순: 나중에 만든 점검이 앞에 온다.
+    const checks = getDb()
+      .checks.filter((c) => c.coverLetterId === coverLetter.id)
+      .reverse()
+      .map(toCheck)
+    return HttpResponse.json({ checks })
+  }),
+
+  http.get<{ checkId: string }>('/api/checks/:checkId', ({ request, params }) => {
+    const { user, check } = findCheck(request, params.checkId)
+    if (!user) return unauthenticated()
+    if (!check) return notFound()
+    return HttpResponse.json({ check: toCheck(check) })
+  }),
+
+  http.post<{ checkId: string; sentenceId: string }>(
+    '/api/checks/:checkId/sentences/:sentenceId/start',
+    async ({ request, params }) => {
+      const { user, check, sentence } = findSentence(request, params.checkId, params.sentenceId)
+      if (!user) return unauthenticated()
+      if (!check || !sentence) return notFound()
+      if (check.stale) return checkStale()
+      // 이미 시작했으면 지금 상태를 그대로 돌려준다.
+      if (sentence.status !== 'pending')
+        return HttpResponse.json({ sentence: toCheckSentence(sentence) })
+      await wait(AI_DELAY)
+      sentence.turns.push({ question: firstQuestion(sentence), answer: null, judge: [] })
+      sentence.status = 'in_progress'
+      save()
+      return HttpResponse.json({ sentence: toCheckSentence(sentence) })
+    },
+  ),
+
+  http.post<{ checkId: string; sentenceId: string }>(
+    '/api/checks/:checkId/sentences/:sentenceId/answers',
+    async ({ request, params }) => {
+      const { user, check, sentence } = findSentence(request, params.checkId, params.sentenceId)
+      if (!user) return unauthenticated()
+      if (!check || !sentence) return notFound()
+      const { text } = await readJson(request)
+      if (isBlank(text)) return invalid('text', '답변을 입력해 주세요.')
+      if (check.stale) return checkStale()
+      if (sentence.status === 'pending')
+        return fail(409, 'SENTENCE_NOT_STARTED', '문장 점검을 먼저 시작해 주세요.')
+      if (sentence.status !== 'in_progress')
+        return fail(409, 'SENTENCE_FINISHED', '이미 끝난 문장이에요.')
+      await wait(AI_DELAY)
+
+      const answer = text as string
+      judgeAnswer(sentence, answer)
+      // 답 글 전체를 후보 하나로 만든다(R12).
+      const candidate: Fact & { experienceId: string | null } = {
+        id: newId(),
+        item: sentence.factItem,
+        text: answer,
+        status: 'candidate',
+        source: 'ai_unverified',
+        clueId: null,
+        origin: 'check',
+        createdAt: now(),
+        experienceId: sentence.experienceId,
+      }
+      check.candidates.push(candidate)
+      save()
+      return HttpResponse.json({ sentence: toCheckSentence(sentence), newCandidates: [candidate] })
+    },
+  ),
+
+  http.post<{ checkId: string; factId: string }>(
+    '/api/checks/:checkId/candidates/:factId/confirm',
+    async ({ request, params }) => {
+      const { user, check } = findCheck(request, params.checkId)
+      if (!user) return unauthenticated()
+      if (!check) return notFound()
+      if (check.resolvedCandidateIds.includes(params.factId)) return candidateResolved()
+      const candidate = check.candidates.find((f) => f.id === params.factId)
+      if (!candidate) return notFound()
+      const { experienceId, item, text, source, clueId } = await readJson(request)
+      // 확인하지 않은 것은 사실이 되지 않는다(C1): ai_unverified는 받지 않는다.
+      if (!isFactSource(source)) return invalid('source', '내가 말함 또는 자료로 확인을 골라 주세요.')
+      if (!isItem(item)) return invalid('item', '항목을 골라 주세요.')
+      if (text !== undefined && isBlank(text)) return invalid('text', '필수 입력이에요.')
+      if (typeof experienceId !== 'string') return invalid('experienceId', '경험을 골라 주세요.')
+      const experience = userExperiences(user.id).find((e) => e.id === experienceId)
+      if (!experience) return notFound()
+      const clueError = checkClue(experience, source, clueId)
+      if (clueError) return clueError
+
+      const fact: Fact = {
+        id: candidate.id,
+        item,
+        text: typeof text === 'string' ? text.trim() : candidate.text,
+        status: 'confirmed',
+        source,
+        clueId: source === 'clue' ? (clueId as string) : null,
+        origin: 'check',
+        createdAt: candidate.createdAt,
+      }
+      experience.card[item].push(fact)
+      check.candidates = check.candidates.filter((f) => f.id !== candidate.id)
+      check.resolvedCandidateIds.push(candidate.id)
+      touch(experience)
+      return HttpResponse.json({ fact })
+    },
+  ),
+
+  http.delete<{ checkId: string; factId: string }>(
+    '/api/checks/:checkId/candidates/:factId',
+    ({ request, params }) => {
+      const { user, check } = findCheck(request, params.checkId)
+      if (!user) return unauthenticated()
+      if (!check) return notFound()
+      if (check.resolvedCandidateIds.includes(params.factId)) return candidateResolved()
+      if (!check.candidates.some((f) => f.id === params.factId)) return notFound()
+      check.candidates = check.candidates.filter((f) => f.id !== params.factId)
+      check.resolvedCandidateIds.push(params.factId)
+      save()
+      return new HttpResponse(null, { status: 204 })
     },
   ),
 ]
@@ -670,4 +1019,5 @@ export const handlers = [
   ...conversationHandlers,
   ...factHandlers,
   ...coverLetterHandlers,
+  ...checkHandlers,
 ]

@@ -201,7 +201,8 @@ export const api = {
   startSentence: (checkId: string, sentenceId: string) =>
     request<{ sentence: CheckSentence }>('POST', `${checkSentence(checkId, sentenceId)}/start`),
   answerSentence: (checkId: string, sentenceId: string, text: string) =>
-    request<{ sentence: CheckSentence; newCandidates: Fact[] }>(
+    // 점검 후보는 제안 경험(experienceId)을 함께 단다(api.md 9절).
+    request<{ sentence: CheckSentence; newCandidates: Check['candidates'] }>(
       'POST',
       `${checkSentence(checkId, sentenceId)}/answers`,
       { text },

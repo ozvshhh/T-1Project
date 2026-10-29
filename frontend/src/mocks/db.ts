@@ -1,11 +1,14 @@
 // 백엔드가 붙기 전까지 쓰는 목 데이터. 모양은 docs/api.md 2절, 시드는 specs/mock-data.md 「시드」.
 // 새로고침해도 남도록 localStorage에 둔다(실제 서버의 DB 역할).
 import type {
+  Check,
+  CheckSentence,
   CoverLetter,
   Experience,
   Fact,
   Item,
   ItemStatusMap,
+  JudgeResult,
   Message,
   User,
 } from '@/api/types'
@@ -18,16 +21,29 @@ type StoredUser = User & { password: string }
 /** 저장용 경험: 응답에는 userId·messages를 빼고 내보낸다. */
 export type StoredExperience = Experience & { userId: string; messages: Message[] }
 export type StoredCoverLetter = CoverLetter & { userId: string }
+/** 저장용 점검 문장: 판정 대상 기준·후보 항목·후보 경험은 목 판정에만 쓰고 응답에는 뺀다. */
+export type StoredCheckSentence = CheckSentence & {
+  criteria: JudgeResult['id'][]
+  factItem: Item
+  experienceId: string | null
+}
+/** 저장용 점검: 확정하거나 버린 후보 id를 남겨, 다시 오면 409로 알린다. */
+export type StoredCheck = Omit<Check, 'sentences'> & {
+  userId: string
+  sentences: StoredCheckSentence[]
+  resolvedCandidateIds: string[]
+}
 
 type Db = {
   users: StoredUser[]
   experiences: StoredExperience[]
   coverLetters: StoredCoverLetter[]
+  checks: StoredCheck[]
   seq: number
 }
 
 // 모양이 바뀌면 키를 올려 예전 저장본을 버린다.
-const STORAGE_KEY = 't1-mock-db-v2'
+const STORAGE_KEY = 't1-mock-db-v3'
 // 처음 쓸 때 만든다.
 let db: Db | null = null
 // 단서 파일은 보관만 한다. localStorage에 넣기엔 커서 메모리에만 두고, 새로고침하면 사라진다.
@@ -178,6 +194,7 @@ function seed(): Db {
     users: [{ id: userId, ...SEED_USER }],
     experiences: [capstone, hackathon],
     coverLetters: [coverLetter],
+    checks: [],
     seq: 1,
   }
 }
@@ -239,6 +256,26 @@ export function toExperience({ userId: _userId, messages: _messages, ...experien
 /** 저장용 자소서에서 응답 모양(api.md CoverLetter)만 꺼낸다. */
 export function toCoverLetter({ userId: _userId, ...coverLetter }: StoredCoverLetter): CoverLetter {
   return coverLetter
+}
+
+/** 저장용 점검 문장에서 응답 모양(api.md CheckSentence)만 꺼낸다. */
+export function toCheckSentence({
+  criteria: _criteria,
+  factItem: _factItem,
+  experienceId: _experienceId,
+  ...sentence
+}: StoredCheckSentence): CheckSentence {
+  return sentence
+}
+
+/** 저장용 점검에서 응답 모양(api.md Check)만 꺼낸다. */
+export function toCheck({
+  userId: _userId,
+  resolvedCandidateIds: _resolved,
+  sentences,
+  ...check
+}: StoredCheck): Check {
+  return { ...check, sentences: sentences.map(toCheckSentence) }
 }
 
 /** 목 토큰: `mock-<userId>`. 실제 서버의 JWT 자리다. */

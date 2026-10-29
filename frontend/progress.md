@@ -17,3 +17,5 @@
   남은 일: 4번 목 API ② 자소서(db.coverLetters 시드는 이미 있음). 막힌 점 없음(setup.ts server export·render 토큰 도우미는 2번에서 이미 됨, prettier는 승인 필요라 18번에서).
 - [4] 자소서 목 경로(붙여넣기·조회·수정·작성 시작·추천·카드 고르기·응답·고친 응답 409) 추가, coverLetters.test.ts 추가.
   남은 일: 5번 목 API ③ 점검(자소서 수정·문항 응답 수정·생성 때 점검 stale 처리를 자소서 경로에 더해야 함). 막힌 점 없음.
+- [5] 점검 목 경로(만들기·목록·조회·문장 시작·답하기·후보 확정/버리기) 추가, 자소서 수정·문항 응답 수정·생성 때 점검 stale, db v3(checks), checks.test.ts 추가. client의 newCandidates 타입을 Check['candidates']로(api.md 9절 experienceId).
+  남은 일: 6번 공통 레이아웃. 막힌 점 없음(시드 2·3번 문장은 mock-data 표대로 한 문장을 '높였고,' 뒤에서 나눈 두 절로 둠).
