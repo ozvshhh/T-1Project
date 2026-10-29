@@ -18,7 +18,7 @@ export interface GenerateCoverLetterInput {
   questions: string[];
 }
 
-type CoverLetterField = 'title' | 'body' | 'preferred' | 'talent' | 'questions';
+type CoverLetterField = 'title' | 'body' | 'preferred' | 'talent' | 'questions' | 'experienceIds';
 
 interface FieldError {
   field: CoverLetterField;
@@ -32,6 +32,7 @@ export const COVER_LETTER_REASONS = {
   preferred: '희망 기업의 우대사항을 입력해 주세요.',
   talent: '희망 기업의 인재상을 입력해 주세요.',
   questions: '자기소개서 문항을 1개 이상 입력해 주세요(빈 문항 없이).',
+  experienceIds: '고를 경험 카드 id 목록을 보내 주세요.',
 } as const;
 
 // 프런트가 칸별로 오류를 보여 주도록 field·reason을 담아 400 VALIDATION으로 돌려준다(api.md 1절).
@@ -93,6 +94,15 @@ export function validateGenerateCoverLetter(raw: unknown): GenerateCoverLetterIn
   if (questions === null) details.push({ field: 'questions', reason: COVER_LETTER_REASONS.questions });
   if (details.length > 0) throw coverLetterValidationError(details);
   return { title: title.ok ? title.title : null, preferred: preferred!, talent: talent!, questions: questions! };
+}
+
+// PUT .../experiences: 배열·문자열 원소만 받는다. 중복은 처음 것만 남기고 고른 순서를 지킨다(카드 단위 선택, api.md 7절 ②).
+export function validateSelectExperiences(raw: unknown): { experienceIds: string[] } {
+  const value = asObject(raw).experienceIds;
+  if (!Array.isArray(value) || !value.every((v): v is string => typeof v === 'string')) {
+    throw coverLetterValidationError([{ field: 'experienceIds', reason: COVER_LETTER_REASONS.experienceIds }]);
+  }
+  return { experienceIds: [...new Set(value)] };
 }
 
 // PATCH: 보낸 칸만 고친다. 보낸 body가 비었으면 400(빈 글로 덮어쓰지 않는다).

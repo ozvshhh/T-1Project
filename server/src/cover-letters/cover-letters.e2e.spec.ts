@@ -479,11 +479,150 @@ describe('C7-1 /api/cover-letters create·list·patch', () => {
     expect((await http().post(`/api/cover-letters/${id}/items/${itemId}/recommendations`)).status).toBe(401);
   });
 
+  const select = (token: string, id: string, itemId: string, body: unknown) =>
+    http()
+      .put(`/api/cover-letters/${id}/items/${itemId}/experiences`)
+      .set('Authorization', `Bearer ${token}`)
+      .send(body as object);
+
+  async function generatedTwo(token: string): Promise<{ id: string; itemIds: string[] }> {
+    const res = await generate(token, { preferred: '우대', talent: '인재', questions: ['문항 1', '문항 2'] });
+    expect(res.status).toBe(201);
+    const cl = (res.body as { coverLetter: CoverLetterBody }).coverLetter;
+    return { id: cl.id, itemIds: (cl.items as ItemBody[]).map((i) => i.id) };
+  }
+
+  const savedItems = async (token: string, id: string): Promise<ItemBody[]> =>
+    (await list(token)).find((c) => c.id === id)!.items as ItemBody[];
+
+  interface SelectBody {
+    item: ItemBody;
+    usedElsewhere: { experienceId: string; itemIds: string[] }[];
+  }
+
+  // 사용자가 고른 카드가 곧 그 문항 응답의 근거다(R8): 추천과 무관하게 내 확정 카드면 저장되고, AI·응답은 건드리지 않는다(C4).
+  it('PUT .../experiences saves my confirmed picks (even unrecommended) as 200 {item, usedElsewhere} without AI', async () => {
+    const e1 = await insertExperience(a.userId, '축제 운영');
+    await insertFact(a.userId, e1, '부스 동선을 다시 짰다', 'confirmed');
+    const e2 = await insertExperience(a.userId, '동아리');
+    await insertFact(a.userId, e2, '회의록을 정리했다', 'confirmed');
+    const { id, itemIds } = await generatedTwo(a.token);
+
+    const res = await select(a.token, id, itemIds[0], { experienceIds: [e1, e2, e1] });
+    expect(res.status).toBe(200);
+    expect(Object.keys(res.body as object).sort()).toEqual(['item', 'usedElsewhere']);
+    const body = res.body as SelectBody;
+    expect(body.item.id).toBe(itemIds[0]);
+    // 중복 id는 한 번만, 고른 순서대로 저장한다.
+    expect(body.item.selectedExperienceIds).toEqual([e1, e2]);
+    expect(body.item.recommendations).toEqual([]);
+    expect(body.item.answer).toBeNull();
+    expect(body.item.answerEdited).toBe(false);
+    expect(body.usedElsewhere).toEqual([]);
+    expect((await savedItems(a.token, id))[0].selectedExperienceIds).toEqual([e1, e2]);
+    expect(fake.calls).toHaveLength(0);
+
+    // 다시 고르기(R13): 빈 선택으로도 바꿀 수 있다.
+    const cleared = await select(a.token, id, itemIds[0], { experienceIds: [] });
+    expect(cleared.status).toBe(200);
+    expect((await savedItems(a.token, id))[0].selectedExperienceIds).toEqual([]);
+  });
+
+  // 같은 카드를 여러 문항에 쓰면 자소서가 반복돼 보인다: 막지는 않되 어느 문항에서 이미 썼는지 알려 준다(api.md 7절 ②).
+  it('PUT .../experiences reports cards already selected or used in other items without blocking', async () => {
+    const e1 = await insertExperience(a.userId, '축제 운영');
+    await insertFact(a.userId, e1, '부스 동선을 다시 짰다', 'confirmed');
+    const e2 = await insertExperience(a.userId, '동아리');
+    await insertFact(a.userId, e2, '회의록을 정리했다', 'confirmed');
+    const e3 = await insertExperience(a.userId, '인턴');
+    await insertFact(a.userId, e3, '보고서를 썼다', 'confirmed');
+    const { id, itemIds } = await generatedTwo(a.token);
+
+    expect((await select(a.token, id, itemIds[0], { experienceIds: [e1] })).status).toBe(200);
+    // 응답에 쓴 카드(usedExperienceIds)만 있는 경우도 알림 대상이다.
+    await connection
+      .collection('coverLetters')
+      .updateOne(
+        { _id: new Types.ObjectId(id), 'items._id': new Types.ObjectId(itemIds[0]) },
+        { $set: { 'items.$.usedExperienceIds': [new Types.ObjectId(e2)] } },
+      );
+
+    const res = await select(a.token, id, itemIds[1], { experienceIds: [e2, e3, e1] });
+    expect(res.status).toBe(200);
+    const body = res.body as SelectBody;
+    expect(body.item.selectedExperienceIds).toEqual([e2, e3, e1]);
+    expect(body.usedElsewhere).toEqual([
+      { experienceId: e2, itemIds: [itemIds[0]] },
+      { experienceId: e1, itemIds: [itemIds[0]] },
+    ]);
+    const items = await savedItems(a.token, id);
+    expect(items[1].selectedExperienceIds).toEqual([e2, e3, e1]);
+    expect(items[0].selectedExperienceIds).toEqual([e1]);
+  });
+
+  // 확정 사실이 없는 카드로는 근거 있는 응답을 만들 수 없다(C1): 어느 카드가 문제인지 알려 주고 아무것도 저장하지 않는다.
+  it('PUT .../experiences returns 400 NO_CONFIRMED_FACTS with the offending cards and saves nothing', async () => {
+    const e1 = await insertExperience(a.userId, '축제 운영');
+    await insertFact(a.userId, e1, '부스 동선을 다시 짰다', 'confirmed');
+    const e3 = await insertExperience(a.userId, '후보만');
+    await insertFact(a.userId, e3, '후보 문장', 'candidate');
+    const e4 = await insertExperience(a.userId, '사실 없음');
+    const { id, itemIds } = await generatedTwo(a.token);
+    expect((await select(a.token, id, itemIds[0], { experienceIds: [e1] })).status).toBe(200);
+
+    const res = await select(a.token, id, itemIds[0], { experienceIds: [e1, e3, e4] });
+    expect(res.status).toBe(400);
+    const error = (res.body as { error: { code: string; details?: { experienceId: string }[] } }).error;
+    expect(error.code).toBe('NO_CONFIRMED_FACTS');
+    expect(error.details).toEqual([{ experienceId: e3 }, { experienceId: e4 }]);
+    expect((await savedItems(a.token, id))[0].selectedExperienceIds).toEqual([e1]);
+    expect(fake.calls).toHaveLength(0);
+  });
+
+  // 남의 카드·없는 카드·잘못된 id는 존재 여부가 새지 않게 같은 404로 막고, 선택은 그대로 둔다(R1).
+  it('PUT .../experiences 404s for other users cards, missing or malformed ids, and others cover letters', async () => {
+    const e1 = await insertExperience(a.userId, '축제 운영');
+    await insertFact(a.userId, e1, '부스 동선을 다시 짰다', 'confirmed');
+    const eb = await insertExperience(b.userId, 'B 카드');
+    await insertFact(b.userId, eb, 'B 확정', 'confirmed');
+    const gone = await insertExperience(a.userId, '지운 카드');
+    await insertFact(a.userId, gone, '지운 카드 사실', 'confirmed');
+    await connection.collection('experiences').deleteOne({ _id: new Types.ObjectId(gone) });
+    const { id, itemIds } = await generatedTwo(a.token);
+    expect((await select(a.token, id, itemIds[0], { experienceIds: [e1] })).status).toBe(200);
+
+    expectNotFound(await select(a.token, id, itemIds[0], { experienceIds: [e1, eb] }));
+    expectNotFound(await select(a.token, id, itemIds[0], { experienceIds: ['bad'] }));
+    expectNotFound(await select(a.token, id, itemIds[0], { experienceIds: [gone] }));
+    expectNotFound(await select(a.token, id, itemIds[0], { experienceIds: ['0123456789abcdef01234567'] }));
+    expectNotFound(await select(b.token, id, itemIds[0], { experienceIds: [eb] }));
+    expectNotFound(await select(a.token, id, '0123456789abcdef01234567', { experienceIds: [e1] }));
+    expectNotFound(await select(a.token, id, 'bad', { experienceIds: [e1] }));
+    expect((await savedItems(a.token, id))[0].selectedExperienceIds).toEqual([e1]);
+  });
+
+  // 형식이 틀린 요청으로 선택이 지워지면 안 된다: 배열·문자열 원소가 아니면 저장 전에 400.
+  it.each([
+    ['missing experienceIds', {}],
+    ['non-array experienceIds', { experienceIds: 'x' }],
+    ['non-string element', { experienceIds: [3] }],
+  ])('PUT .../experiences rejects %s with 400 VALIDATION', async (_label, body) => {
+    const { id, itemIds } = await generatedTwo(a.token);
+    expectValidation(await select(a.token, id, itemIds[0], body), 'experienceIds');
+  });
+
   // 로그인 전에는 기능을 쓸 수 없다(C3).
   it('requires a token on every route', async () => {
     expect((await http().post('/api/cover-letters/generate').send(valid)).status).toBe(401);
     expect((await http().post('/api/cover-letters').send({ body: 'x' })).status).toBe(401);
     expect((await http().get('/api/cover-letters')).status).toBe(401);
+    expect(
+      (
+        await http()
+          .put('/api/cover-letters/0123456789abcdef01234567/items/0123456789abcdef01234567/experiences')
+          .send({ experienceIds: [] })
+      ).status,
+    ).toBe(401);
     expect((await http().patch('/api/cover-letters/0123456789abcdef01234567').send({ title: 'x' })).status).toBe(
       401,
     );

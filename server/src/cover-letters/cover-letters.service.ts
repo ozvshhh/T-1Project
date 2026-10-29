@@ -75,6 +75,65 @@ export class CoverLettersService {
     return toItemDto(this.findItem(assertOwner(updated, userId), itemId));
   }
 
+  // 문항에 쓸 카드 고르기(R8·R13). 추천에 없던 카드도 내 확정 카드면 받는다. AI를 부르지 않고 answer도 건드리지 않는다(C4).
+  // 다른 문항에서 이미 고르거나 쓴 카드는 막지 않고 usedElsewhere로 알리기만 한다(api.md 7절 ②).
+  async selectExperiences(
+    userId: string,
+    id: string,
+    itemId: string,
+    experienceIds: string[],
+  ): Promise<{ item: CoverLetterItemDto; usedElsewhere: { experienceId: string; itemIds: string[] }[] }> {
+    const owned = await this.findOwned(userId, id);
+    const item = this.findItem(owned, itemId);
+    const oids = experienceIds.map(parseObjectIdOr404);
+
+    // 남의 경험·지운 경험·없는 id는 하나라도 섞이면 같은 404로 막는다(R1): 존재 여부가 새지 않게 한다.
+    const mine = await this.experiences.countDocuments({ _id: { $in: oids }, userId: owned.userId });
+    if (mine !== oids.length) throw new NotFoundException({ code: 'NOT_FOUND', message: '찾을 수 없습니다.' });
+
+    // 후보 사실만 있는 카드는 근거가 아직 없다(C1): 문제 카드를 고른 순서대로 알려 주고 아무것도 저장하지 않는다.
+    const confirmed = new Set(
+      (
+        await this.facts.distinct('experienceId', {
+          experienceId: { $in: oids },
+          userId: owned.userId,
+          status: 'confirmed',
+        })
+      ).map(String),
+    );
+    const missing = experienceIds.filter((expId) => !confirmed.has(expId));
+    if (missing.length) {
+      throw new BadRequestException({
+        code: 'NO_CONFIRMED_FACTS',
+        message: '확정한 사실이 없는 경험 카드는 고를 수 없어요. 카드를 먼저 정리해 주세요.',
+        details: missing.map((experienceId) => ({ experienceId })),
+      });
+    }
+
+    const usedElsewhere = experienceIds
+      .map((experienceId) => ({
+        experienceId,
+        itemIds: (owned.items ?? [])
+          .filter((other) => !item._id.equals(other._id))
+          .filter((other) =>
+            [...(other.selectedExperienceIds ?? []), ...(other.usedExperienceIds ?? [])].some(
+              (e) => String(e) === experienceId,
+            ),
+          )
+          .map((other) => String(other._id)),
+      }))
+      .filter((entry) => entry.itemIds.length > 0);
+
+    const updated = await this.coverLetters
+      .findOneAndUpdate(
+        { _id: owned._id, userId: owned.userId, 'items._id': item._id },
+        { $set: { 'items.$.selectedExperienceIds': oids } },
+        { returnDocument: 'after' },
+      )
+      .lean<CoverLetterRecord>();
+    return { item: toItemDto(this.findItem(assertOwner(updated, userId), itemId)), usedElsewhere };
+  }
+
   // 확정 사실이 1개 이상인 내 경험만 카드로 본다(C1). 후보 사실은 읽지 않아 AI 입력에 들어갈 수 없다.
   private async confirmedCards(userId: Types.ObjectId): Promise<RecommendCard[]> {
     const facts = await this.facts

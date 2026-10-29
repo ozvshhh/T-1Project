@@ -1,9 +1,10 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Param, Patch, Post, Put } from '@nestjs/common';
 import { AuthUser, CurrentUser } from '../auth/current-user.decorator';
 import { CoverLetterDto, CoverLetterItemDto } from './cover-letter.dto';
 import {
   validateCreateCoverLetter,
   validateGenerateCoverLetter,
+  validateSelectExperiences,
   validateUpdateCoverLetter,
 } from './cover-letter.validation';
 import { CoverLettersService } from './cover-letters.service';
@@ -56,5 +57,18 @@ export class CoverLettersController {
     @Param('itemId') itemId: string,
   ): Promise<{ item: CoverLetterItemDto }> {
     return { item: await this.service.recommend(user.id, id, itemId) };
+  }
+
+  // 문항 카드 고르기(R8·R13). 검증을 소유자 조회보다 먼저 해 형식 오류 400이 남의 자소서 존재와 무관하게 한다.
+  @Put(':id/items/:itemId/experiences')
+  @HttpCode(HttpStatus.OK)
+  async selectExperiences(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Param('itemId') itemId: string,
+    @Body() body: unknown,
+  ): Promise<{ item: CoverLetterItemDto; usedElsewhere: { experienceId: string; itemIds: string[] }[] }> {
+    const { experienceIds } = validateSelectExperiences(body);
+    return this.service.selectExperiences(user.id, id, itemId, experienceIds);
   }
 }
