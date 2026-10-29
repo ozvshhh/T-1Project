@@ -37,3 +37,5 @@
   남은 일: 14번 I 문항별 작성. 막힌 점: I 화면 전이라 작성 시작 뒤 이동은 없는 페이지예요로 검사함(14번에서 그 테스트를 바꿔야 할 수 있음).
 - [14] common·ExperienceDetail(2)·Experiences 테스트의 선택자·기대를 영역 안 검색/경험 상세 확인으로 고침, 전체 vitest 통과.
   남은 일: 15번 I 문항별 작성. 막힌 점 없음(전체 실행에서 타임아웃성 flake가 가끔 나옴).
+- [15] CoverLetterWrite(I) 신설: 진행 막대·문항 이동, 추천(NO_CONFIRMED_FACTS 안내)·카드 토글·사용 중·사실 보기/보강, 만들기(덮어쓰기 확인창·409), 응답 저장·근거 카드·다음 문항, App 라우트, CoverLetterWrite.test.tsx(S5 포함) 추가.
+  CoverLetterNew.test.tsx의 '없는 페이지예요' 기대를 I 화면 제목 확인으로 바꿈(규칙 6 예외). 남은 일: 16번 J 자소서 상세. 막힌 점 없음.

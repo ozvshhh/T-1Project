@@ -3,6 +3,7 @@ import { RequireAuth, RequireUnlocked } from '@/components/guards'
 import Layout from '@/components/Layout'
 import CoverLetterNew from '@/pages/CoverLetterNew'
 import CoverLetterPaste from '@/pages/CoverLetterPaste'
+import CoverLetterWrite from '@/pages/CoverLetterWrite'
 import AuthPage from '@/pages/AuthPage'
 import ExperienceDetail from '@/pages/ExperienceDetail'
 import ExperienceNew from '@/pages/ExperienceNew'
@@ -27,6 +28,7 @@ export default function App() {
           <Route element={<RequireUnlocked />}>
             <Route path="/cover-letters/paste" element={<CoverLetterPaste />} />
             <Route path="/cover-letters/new" element={<CoverLetterNew />} />
+            <Route path="/cover-letters/:id/items/:itemId" element={<CoverLetterWrite />} />
           </Route>
         </Route>
         <Route path="*" element={<NotFound />} />
