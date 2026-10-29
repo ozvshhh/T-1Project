@@ -24,6 +24,9 @@
     ],
     "rootDir": "src",
     "testRegex": ".*\\.spec\\.ts$",
+    "setupFiles": [
+      "<rootDir>/no-network.setup.ts"
+    ],
     "transform": {
       "^.+\\.ts$": "ts-jest"
     },

@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { z } from 'zod';
 import { AiUnavailableError } from './ai-unavailable.error';
 import { AiService } from './ai.service';
@@ -175,6 +176,93 @@ describe('AiService.json', () => {
       const calls = fetchMock.mock.calls as [string, RequestInit][];
       const signals = calls.map(([, init]) => init.signal);
       expect(new Set(signals).size).toBe(signals.length);
+    });
+  });
+
+  // 예산($10) 추적은 호출 로그로 한다. 키·사용자 글·AI 응답이 로그에 남으면 유출이 된다.
+  describe('호출 로그 한 줄 (C4-3)', () => {
+    let logSpy: jest.SpyInstance;
+    const logged = {
+      task: 'log-task',
+      system: 'SYSTEM-SECRET-TEXT',
+      user: 'USER-SECRET-TEXT',
+      schema,
+    };
+
+    function withUsage(content: string, input: number, output: number): Response {
+      return new Response(
+        JSON.stringify({
+          choices: [{ message: { content } }],
+          usage: { prompt_tokens: input, completion_tokens: output },
+        }),
+        { status: 200 },
+      );
+    }
+
+    beforeEach(() => {
+      logSpy = jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+    });
+
+    afterEach(() => {
+      logSpy.mockRestore();
+    });
+
+    function onlyLine(): string {
+      expect(logSpy).toHaveBeenCalledTimes(1);
+      return String((logSpy.mock.calls[0] as unknown[])[0]);
+    }
+
+    function expectNoSecrets(line: string): void {
+      expect(line).not.toContain('test-key');
+      expect(line).not.toContain('SYSTEM-SECRET-TEXT');
+      expect(line).not.toContain('USER-SECRET-TEXT');
+      expect(line).not.toContain('CONTENT-SECRET');
+    }
+
+    it('성공 시 task·model·입출력 토큰 수·ms를 한 줄로 남기고 키·내용은 없다', async () => {
+      fetchMock.mockReset().mockResolvedValue(withUsage('{"a":1,"b":"CONTENT-SECRET"}', 12, 34));
+
+      await new AiService().json(logged);
+
+      const line = onlyLine();
+      expect(line).toContain('task=log-task');
+      expect(line).toContain('model=openai/gpt-6.1-terra');
+      expect(line).toContain('in=12');
+      expect(line).toContain('out=34');
+      expect(line).toMatch(/ms=\d+/);
+      expect(line).toContain('result=ok');
+      expectNoSecrets(line);
+    });
+
+    it('재시도로 쓴 토큰까지 합산한다', async () => {
+      fetchMock
+        .mockReset()
+        .mockResolvedValueOnce(withUsage('{"a":"CONTENT-SECRET"}', 10, 5))
+        .mockResolvedValueOnce(withUsage('{"a":1}', 10, 5));
+
+      await new AiService().json(logged);
+
+      const line = onlyLine();
+      expect(line).toContain('in=20');
+      expect(line).toContain('out=10');
+      expectNoSecrets(line);
+    });
+
+    it('실패(AiUnavailableError)도 한 줄 남기고 토큰을 모르면 0, 키·원문은 없다', async () => {
+      fetchMock
+        .mockReset()
+        .mockImplementation(() => Promise.resolve(new Response('CONTENT-SECRET', { status: 500 })));
+
+      await expect(new AiService().json(logged)).rejects.toBeInstanceOf(AiUnavailableError);
+
+      const line = onlyLine();
+      expect(line).toContain('task=log-task');
+      expect(line).toContain('model=openai/gpt-6.1-terra');
+      expect(line).toContain('in=0');
+      expect(line).toContain('out=0');
+      expect(line).toMatch(/ms=\d+/);
+      expect(line).toContain('result=fail');
+      expectNoSecrets(line);
     });
   });
 });
