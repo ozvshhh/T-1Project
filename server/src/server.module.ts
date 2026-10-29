@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { MongooseModule, MongooseModuleOptions } from '@nestjs/mongoose';
 import { AppModule } from './app.module';
 import { AuthModule } from './auth/auth.module';
+import { ChecksModule } from './checks/checks.module';
 import { CoverLettersModule } from './cover-letters/cover-letters.module';
 import { ExperiencesModule } from './experiences/experiences.module';
 import { UsersModule } from './users/users.module';
@@ -24,6 +25,7 @@ export function mongooseOptionsFromEnv(): MongooseModuleOptions {
     AuthModule,
     ExperiencesModule,
     CoverLettersModule,
+    ChecksModule,
     AppModule,
   ],
 })
