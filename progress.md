@@ -21,6 +21,7 @@ Agent가 서비스 저장소 루트의 `progress.md`로 복사해 이어 쓴다(
 - [x] 앱 설치 후 읽기 권한 확인 (5분 자동 재확인, 즉시 확인은 같은 레포 URL 다시 저장) — 재저장 결과 check.result=ok, repoAccessOk=true
 - 저장소 URL / 기본 브랜치 / commit SHA: https://github.com/tgYun783/T-1Project / main / 416ecca
 - 사이트 등록 결과 / loopthon-bot 설치·접근 상태: 등록 ok / 앱 설치 완료, 접근 ok (2026-10-29)
+- 팀원 초대: ozvshhh, a77315829-byte (Write, 수락 대기, 2026-10-29). README에 팀 작업 방법 기록
 
 ## 2. 문제정의 기록 → 문제 다지기 → 해법 찾기 → 기능 명세
 

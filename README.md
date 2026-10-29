@@ -22,3 +22,22 @@ SUMTECH 2026 루프톤 팀 서비스 저장소입니다. 주제: AI 에이전트
 | `AI_GATEWAY_API_KEY` | AI Gateway 키 (필요할 때만) | 배포 환경변수·GitHub Secrets |
 
 변수 이름 목록은 `.env.example`에 있습니다.
+
+## 팀 작업 방법
+
+1. 초대 메일(또는 GitHub 알림)에서 **Accept invitation**을 누른다.
+2. 저장소를 받는다.
+   ```bash
+   git clone https://github.com/tgYun783/T-1Project.git
+   cd T-1Project
+   ```
+3. 작업은 각자 브랜치에서 한다. `main`에 직접 올리지 않는다.
+   ```bash
+   git checkout -b feature/작업이름
+   # 수정 후
+   git add <파일>
+   git commit -m "설명"
+   git push -u origin feature/작업이름
+   ```
+4. GitHub에서 `main`으로 Pull Request를 만들어 합친다. 대시보드와 주최 측 실행은 `main`에 올라간 것만 본다.
+5. 작업 시작 전에는 항상 `git pull origin main`으로 최신 상태를 받는다.
