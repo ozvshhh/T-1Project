@@ -10,7 +10,7 @@
 | 컨테이너 | 루트 `Dockerfile`, `docker-compose.yml` (현재 `app` 하나, nginx가 정적 파일 + `/__health`) |
 | 배포 | AWS Lightsail Container Service `t1-project` (서울, nano 1대) |
 | 배포 주소 | https://t1-project.g339d0tmz2ype.ap-northeast-2.cs.amazonlightsail.com |
-| DB | Lightsail Managed Database `t1-db` (PostgreSQL 18, micro, 비공개, 서울). VPC 피어링 켜짐 |
+| DB | 아직 없음. 배포용 DB는 DB 담당자가 정해 만든다 (후보: Lightsail Managed Database, 외부 무료 Postgres). VPC 피어링은 켜져 있음 |
 
 ## 지켜야 할 채점 규칙 (어기면 주최 측 실행이 실패한다)
 
@@ -35,15 +35,9 @@
 
 ## 배포 환경의 DB
 
-- 배포용 DB는 Lightsail Managed Database `t1-db`이고 **인터넷에 공개되어 있지 않다**. 로컬 PC에서는 직접 접속할 수 없다. 배포된 컨테이너에서만 VPC 피어링으로 내부 주소로 붙는다.
-- 접속 정보(엔드포인트·포트)는 AWS CLI로 확인한다. 마스터 비밀번호는 문서·채팅·Git에 적지 않는다.
-  ```bash
-  aws lightsail get-relational-database --region ap-northeast-2 --relational-database-name t1-db \
-    --query 'relationalDatabase.masterEndpoint'
-  aws lightsail get-relational-database-master-user-password --region ap-northeast-2 \
-    --relational-database-name t1-db
-  ```
-- 마스터 사용자 `t1admin`, DB 이름 `app`. 연결 문자열은 `DATABASE_URL`로 컨테이너 환경변수에 넣는다(deployment 설정).
+- 배포용 DB는 아직 만들지 않았다. DB 담당자가 종류와 서비스를 정해 만든 뒤 이 절을 갱신한다.
+- Lightsail Managed Database를 쓰면 컨테이너 서비스와 VPC 피어링(이미 켜짐)으로 비공개 연결할 수 있고, 로컬 PC에서는 직접 접속할 수 없다. 외부 DB를 쓰면 공개 접속이 필요하다.
+- 연결 문자열은 `DATABASE_URL`로 컨테이너 환경변수(deployment 설정)에 넣는다. 비밀번호는 문서·채팅·Git에 적지 않는다.
 - Container Service에는 영구 디스크가 없다. 파일 업로드·SQLite 같은 로컬 저장에 기대지 않는다.
 
 ## 배포 방법 (수동)
@@ -67,4 +61,4 @@ aws lightsail create-container-service-deployment --region ap-northeast-2 --serv
 - 기존 `*.test.*` 파일은 수정·삭제하지 않는다. 새 기능은 새 테스트 파일로 추가한다.
 - 위 채점 규칙(특히 `/__health`, 상대 경로, 시드 계정, 2분 기동)을 어기는 변경은 테스트로 막는다.
 - 비밀값(DB 비밀번호, `AI_GATEWAY_API_KEY`)은 코드·로그·커밋에 남기지 않는다. `.env.example`에는 이름만 적는다.
-- 행사가 끝나면 과금되는 리소스(컨테이너 서비스 `t1-project`, DB `t1-db`)를 삭제한다.
+- 행사가 끝나면 과금되는 리소스(컨테이너 서비스 `t1-project`, 만들었다면 DB)를 삭제한다.
