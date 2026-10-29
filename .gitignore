@@ -1,0 +1,32 @@
+# 비밀값·인증
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# 의존성·빌드 산출물
+node_modules/
+.next/
+dist/
+build/
+out/
+coverage/
+.vercel/
+
+# 테스트 산출물
+test-results/
+playwright-report/
+e2e/node_modules/
+
+# 큰 데이터 파일
+*.mp4
+*.mov
+*.zip
+*.csv.gz
+
+# OS·에디터
+.DS_Store
+*.log
+.idea/
+.vscode/
