@@ -1,5 +1,6 @@
 import { Clue } from './clue.schema';
 import { Experience, Item, ItemStatus, ITEMS } from './experience.schema';
+import { Fact } from './fact.schema';
 
 // api.md 2절 Fact·Clue 응답 모양. 단서·사실 컬렉션(C5-2·C5-3)이 이 모양으로 조립해 넘긴다.
 export interface FactDto {
@@ -40,6 +41,24 @@ export interface ExperienceRelated {
 }
 
 type ExperienceRecord = Experience & { _id: unknown };
+
+type FactRecord = Pick<Fact, 'item' | 'text' | 'status' | 'source' | 'clueId' | 'origin' | 'createdAt'> & {
+  _id: unknown;
+};
+
+// 사실 응답도 api.md 2절 키만 고른다: experienceId·userId가 응답에 새지 않게 한다.
+export function toFactDto(fact: FactRecord): FactDto {
+  return {
+    id: String(fact._id),
+    item: fact.item,
+    text: fact.text,
+    status: fact.status,
+    source: fact.source,
+    clueId: fact.clueId ? String(fact.clueId) : null,
+    origin: fact.origin,
+    createdAt: fact.createdAt.toISOString(),
+  };
+}
 
 type ClueRecord = Pick<Clue, 'type' | 'description' | 'text' | 'fileName' | 'createdAt'> & { _id: unknown };
 

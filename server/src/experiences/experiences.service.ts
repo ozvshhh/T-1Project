@@ -4,12 +4,23 @@ import { Model, Types } from 'mongoose';
 import { assertOwner, parseObjectIdOr404 } from '../common/ownership';
 import { Clue } from './clue.schema';
 import { FileClueInput, TextClueInput } from './clue.validation';
-import { ClueDto, ExperienceDto, ExperienceRelated, toClueDto, toExperienceDto } from './experience.dto';
+import {
+  ClueDto,
+  ExperienceDto,
+  ExperienceRelated,
+  FactDto,
+  toClueDto,
+  toExperienceDto,
+  toFactDto,
+} from './experience.dto';
 import { Experience } from './experience.schema';
 import { ExperienceInput } from './experience.validation';
+import { Fact } from './fact.schema';
+import { FACT_REASONS, FactInput, factValidationError } from './fact.validation';
 
 type ExperienceRecord = Experience & { _id: Types.ObjectId };
 type ClueRecord = Clue & { _id: Types.ObjectId };
+type FactRecord = Fact & { _id: Types.ObjectId };
 
 export interface ClueFile {
   data: Buffer;
@@ -25,6 +36,7 @@ export class ExperiencesService {
   constructor(
     @InjectModel(Experience.name) private readonly experiences: Model<Experience>,
     @InjectModel(Clue.name) private readonly clues: Model<Clue>,
+    @InjectModel(Fact.name) private readonly facts: Model<Fact>,
   ) {}
 
   async create(userId: string, input: ExperienceInput): Promise<ExperienceDto> {
@@ -95,6 +107,69 @@ export class ExperiencesService {
     };
   }
 
+  // 사용자가 직접 쓴 사실은 확인을 거친 것이므로 바로 confirmed·manual로 카드에 들어간다(api.md 6절, R6).
+  async addFact(userId: string, id: string, input: FactInput): Promise<FactDto> {
+    const owned = await this.findOwned(userId, id);
+    if (input.source === 'clue') await this.assertClueOfExperience(owned, input.clueId);
+    const created = await this.facts.create({
+      experienceId: owned._id,
+      userId: owned.userId,
+      item: input.item,
+      text: input.text,
+      status: 'confirmed',
+      source: input.source,
+      clueId: input.source === 'clue' ? input.clueId : null,
+      origin: 'manual',
+    });
+    await this.touch(owned);
+    return toFactDto(created.toObject());
+  }
+
+  // 보낸 칸만 고친다. 고친 뒤의 출처가 clue면 그 단서가 이 경험 것인지 다시 확인해, 고치는 길로 남의 단서가 붙지 않게 한다(C1).
+  async updateFact(userId: string, id: string, factId: string, input: Partial<FactInput>): Promise<FactDto> {
+    const owned = await this.findOwned(userId, id);
+    const fact = await this.findFact(owned, factId);
+    if (Object.keys(input).length === 0) return toFactDto(fact);
+    const source = input.source ?? fact.source;
+    if (input.clueId !== undefined && input.clueId !== null && source !== 'clue') {
+      throw factValidationError([{ field: 'clueId', reason: FACT_REASONS.clueId }]);
+    }
+    if (source === 'clue') await this.assertClueOfExperience(owned, input.clueId ?? fact.clueId);
+    const updated = await this.facts
+      .findOneAndUpdate({ _id: fact._id, experienceId: owned._id }, { $set: input }, { returnDocument: 'after' })
+      .lean<FactRecord>();
+    if (!updated) throw new NotFoundException({ code: 'NOT_FOUND', message: '찾을 수 없습니다.' });
+    await this.touch(owned);
+    return toFactDto(updated);
+  }
+
+  // 이 경험의 사실만 지운다. 다른 경험 경로로 온 factId는 404라 경로와 자원이 어긋나도 지워지지 않는다(R1).
+  async deleteFact(userId: string, id: string, factId: string): Promise<void> {
+    const owned = await this.findOwned(userId, id);
+    const fact = await this.findFact(owned, factId);
+    await this.facts.deleteOne({ _id: fact._id, experienceId: owned._id });
+    await this.touch(owned);
+  }
+
+  // 사실이 바뀌면 updatedAt만 올린다. itemStatus는 대화가 정하는 값이라 건드리지 않는다(api.md 5절 끝).
+  private async touch(owned: ExperienceRecord): Promise<void> {
+    await this.experiences.updateOne({ _id: owned._id }, { $set: { updatedAt: new Date() } });
+  }
+
+  private async findFact(owned: ExperienceRecord, factId: string): Promise<FactRecord> {
+    const fact = await this.facts
+      .findOne({ _id: parseObjectIdOr404(factId), experienceId: owned._id, userId: owned.userId })
+      .lean<FactRecord>();
+    if (!fact) throw new NotFoundException({ code: 'NOT_FOUND', message: '찾을 수 없습니다.' });
+    return fact;
+  }
+
+  // clue 출처는 같은 경험의 단서여야 한다(명세 05). 다른 경험의 단서를 붙이면 R5 출처 보기가 엉뚱한 자료를 연다.
+  private async assertClueOfExperience(owned: ExperienceRecord, clueId: Types.ObjectId | null): Promise<void> {
+    const exists = clueId ? await this.clues.exists({ _id: clueId, experienceId: owned._id }) : null;
+    if (!exists) throw factValidationError([{ field: 'clueId', reason: FACT_REASONS.clueId }]);
+  }
+
   // 잘못된 id 형식·없는 id·남의 경험을 모두 같은 404로 돌려 존재 여부가 새지 않게 한다(R1).
   private async findOwned(userId: string, id: string): Promise<ExperienceRecord> {
     const objectId = parseObjectIdOr404(id);
@@ -102,15 +177,17 @@ export class ExperiencesService {
     return assertOwner(doc, userId);
   }
 
-  // 사실 컬렉션은 C5-3에서 생긴다. 그 전까지 이 경험에 딸린 사실은 실제로 없으므로 빈 목록으로 조립한다.
-  // 단서는 올린 순서대로 보여 줘야 사용자가 방금 올린 것을 끝에서 찾는다.
+  // 단서·사실은 만든 순서대로 보여 줘야 사용자가 방금 올린 것을 끝에서 찾는다. 카드·후보 나누기는 toExperienceDto가 한다.
   private async assemble(doc: ExperienceRecord): Promise<ExperienceDto> {
-    const clues = await this.clues
-      .find({ experienceId: doc._id })
-      .select(CLUE_LIST_FIELDS)
-      .sort({ createdAt: 1, _id: 1 })
-      .lean<ClueRecord[]>();
-    const related: ExperienceRelated = { clues: clues.map(toClueDto), facts: [] };
+    const [clues, facts] = await Promise.all([
+      this.clues
+        .find({ experienceId: doc._id })
+        .select(CLUE_LIST_FIELDS)
+        .sort({ createdAt: 1, _id: 1 })
+        .lean<ClueRecord[]>(),
+      this.facts.find({ experienceId: doc._id }).sort({ createdAt: 1, _id: 1 }).lean<FactRecord[]>(),
+    ]);
+    const related: ExperienceRelated = { clues: clues.map(toClueDto), facts: facts.map(toFactDto) };
     return toExperienceDto(doc, related);
   }
 }

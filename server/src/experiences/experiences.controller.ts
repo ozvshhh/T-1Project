@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -17,8 +18,9 @@ import { Request, Response } from 'express';
 import { AuthUser, CurrentUser } from '../auth/current-user.decorator';
 import { ClueFileInterceptor } from './clue-file.interceptor';
 import { UploadedClueFile, validateFileClue, validateTextClue } from './clue.validation';
-import { ClueDto, ExperienceDto } from './experience.dto';
+import { ClueDto, ExperienceDto, FactDto } from './experience.dto';
 import { validateCreateExperience, validateUpdateExperience } from './experience.validation';
+import { validateCreateFact, validateUpdateFact } from './fact.validation';
 import { ExperiencesService } from './experiences.service';
 
 // RFC 5987: 한글 이름은 filename*로 싣고, 옛 브라우저용 filename에는 ASCII만 남긴다. 헤더 주입을 막으려 따옴표·제어문자도 바꾼다.
@@ -89,6 +91,38 @@ export class ExperiencesController {
       length: file.data.length,
       disposition: contentDisposition(file.fileName),
     });
+  }
+
+  // 사용자가 카드에 직접 쓰는 사실(api.md 6절). 형식 검증을 소유자 조회보다 먼저 해 400 여부로 남의 경험을 떠볼 수 없게 한다.
+  @Post(':id/facts')
+  @HttpCode(HttpStatus.CREATED)
+  async addFact(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Body() body: unknown,
+  ): Promise<{ fact: FactDto }> {
+    return { fact: await this.service.addFact(user.id, id, validateCreateFact(body)) };
+  }
+
+  @Patch(':id/facts/:factId')
+  async updateFact(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Param('factId') factId: string,
+    @Body() body: unknown,
+  ): Promise<{ fact: FactDto }> {
+    return { fact: await this.service.updateFact(user.id, id, factId, validateUpdateFact(body)) };
+  }
+
+  // 지운 뒤 돌려줄 자원이 없으므로 204 빈 본문(api.md 6절).
+  @Delete(':id/facts/:factId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async deleteFact(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Param('factId') factId: string,
+  ): Promise<void> {
+    await this.service.deleteFact(user.id, id, factId);
   }
 
   // 입력 검증을 DB 조회보다 먼저 한다: 400 여부가 자원 존재와 무관해져 남의 경험이 있는지 떠볼 수 없다.
