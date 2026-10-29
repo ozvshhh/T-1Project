@@ -10,7 +10,7 @@ export interface DraftInput {
 type DraftField = keyof DraftInput;
 
 interface FieldError {
-  field: DraftField;
+  field: DraftField | 'text';
   reason: string;
 }
 
@@ -61,6 +61,16 @@ export function validateCreateDraft(body: unknown): DraftInput {
   const summary = readOptional(obj, 'summary', details);
   throwIfAny(details);
   return { title: title!, period: period ?? '', summary: summary ?? '' };
+}
+
+// POST /api/resume: 빈 글로 AI를 부르면 예산만 쓰므로 AI 호출 전에 400으로 막는다(api.md 4절).
+// 붙여넣은 글은 그대로 저장한다(사용자가 쓴 줄바꿈·공백을 바꾸지 않는다).
+export function validatePasteResume(body: unknown): string {
+  const obj = asObject(body);
+  if (typeof obj.text !== 'string' || obj.text.trim() === '') {
+    throwIfAny([{ field: 'text', reason: '이력서 글을 입력해 주세요.' }]);
+  }
+  return obj.text as string;
 }
 
 // PATCH: 보낸 칸만 고친다. title을 보냈는데 비었으면 400(빈 이름으로 덮어쓰지 않는다).

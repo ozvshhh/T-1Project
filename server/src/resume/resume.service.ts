@@ -1,7 +1,10 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
+import { AiService } from '../ai/ai.service';
 import { parseObjectIdOr404 } from '../common/ownership';
+import { Experience } from '../experiences/experience.schema';
+import { buildResumeSplitInput, RESUME_SPLIT_SYSTEM, resumeSplitSchema } from './prompts';
 import { ActivityDraft, DraftOrigin, Resume } from './resume.schema';
 import { DraftInput } from './resume.validation';
 
@@ -33,6 +36,16 @@ export function toDraftDto(draft: DraftRecord): ActivityDraftDto {
   };
 }
 
+// 문서가 없으면 빈 이력서 모양(api.md 2절): 프런트가 null·빈 배열로 "아직 붙여넣지 않음"을 판단한다.
+function toResumeDto(doc: ResumeRecord | null): ResumeDto {
+  if (!doc) return { text: null, drafts: [], updatedAt: null };
+  return {
+    text: doc.text ?? null,
+    drafts: (doc.drafts ?? []).map(toDraftDto),
+    updatedAt: doc.updatedAt ? doc.updatedAt.toISOString() : null,
+  };
+}
+
 // 남의 초안·없는 초안을 같은 본문으로 돌려줘 다른 계정의 초안이 있는지 알 수 없게 한다(common/ownership과 같은 본문).
 function draftNotFound(): NotFoundException {
   return new NotFoundException({ code: 'NOT_FOUND', message: '찾을 수 없습니다.' });
@@ -40,17 +53,59 @@ function draftNotFound(): NotFoundException {
 
 @Injectable()
 export class ResumeService {
-  constructor(@InjectModel(Resume.name) private readonly resumes: Model<Resume>) {}
+  constructor(
+    @InjectModel(Resume.name) private readonly resumes: Model<Resume>,
+    @InjectModel(Experience.name) private readonly experiences: Model<Experience>,
+    private readonly ai: AiService,
+  ) {}
+
+  // 붙여넣은 글을 AI로 활동으로 나눠 새 활동만 ai 초안으로 더한다(api.md 4절 POST /api/resume).
+  // AI가 성공한 뒤에만 text·drafts·updatedAt을 한 번에 저장한다: 실패(502)면 글도 바꾸지 않는다(C2).
+  async paste(userId: string, text: string): Promise<{ resume: ResumeDto; added: ActivityDraftDto[] }> {
+    const result = await this.ai.json({
+      task: 'resume-split',
+      system: RESUME_SPLIT_SYSTEM,
+      user: buildResumeSplitInput(text),
+      schema: resumeSplitSchema,
+    });
+
+    // 중복 판단은 내 경험·내 초안 제목으로만 한다: 남의 제목으로 내 활동이 빠지면 계정 사이에 정보가 샌다(R1).
+    const owner = new Types.ObjectId(userId);
+    const [myExperiences, myResume] = await Promise.all([
+      this.experiences.find({ userId: owner }, { title: 1 }).lean<{ title: string }[]>(),
+      this.resumes.findOne({ userId: owner }, { 'drafts.title': 1 }).lean<{ drafts?: { title: string }[] }>(),
+    ]);
+    const seen = new Set([...myExperiences, ...(myResume?.drafts ?? [])].map((x) => x.title.trim()));
+
+    // AI 응답은 믿지 않는다: 빈 제목과 이미 나온 제목(이번 응답 안 포함)은 서버가 버린다.
+    const added: DraftRecord[] = [];
+    for (const activity of result.activities) {
+      const title = activity.title.trim();
+      if (title === '' || seen.has(title)) continue;
+      seen.add(title);
+      added.push({
+        _id: new Types.ObjectId(),
+        title,
+        period: activity.period.trim(),
+        summary: activity.summary.trim(),
+        origin: 'ai',
+      });
+    }
+
+    const doc = await this.resumes
+      .findOneAndUpdate(
+        { userId: owner },
+        { $set: { text, updatedAt: new Date() }, $push: { drafts: { $each: added } } },
+        { upsert: true, returnDocument: 'after' },
+      )
+      .lean<ResumeRecord>();
+    return { resume: toResumeDto(doc), added: added.map(toDraftDto) };
+  }
 
   // 아직 문서가 없으면 만들지 않고 빈 이력서 모양만 돌려준다: 조회만으로 DB에 쓰지 않는다.
   async get(userId: string): Promise<ResumeDto> {
     const doc = await this.resumes.findOne({ userId: new Types.ObjectId(userId) }).lean<ResumeRecord>();
-    if (!doc) return { text: null, drafts: [], updatedAt: null };
-    return {
-      text: doc.text ?? null,
-      drafts: (doc.drafts ?? []).map(toDraftDto),
-      updatedAt: doc.updatedAt ? doc.updatedAt.toISOString() : null,
-    };
+    return toResumeDto(doc);
   }
 
   // 문서가 없으면 text: null로 만들면서 초안을 넣는다(명세 10). upsert 한 번이라 동시 요청에도 계정당 문서가 하나다.
