@@ -1,4 +1,5 @@
 import { Server } from 'node:http';
+import { randomUUID } from 'node:crypto';
 import * as os from 'node:os';
 import { INestApplication } from '@nestjs/common';
 import { getConnectionToken, MongooseModule } from '@nestjs/mongoose';
@@ -17,7 +18,8 @@ import { SeedService } from '../users/seed.service';
 import { UsersModule } from '../users/users.module';
 
 const SEED_EMAIL = 'seeker@example.com';
-const SEED_PASSWORD = 'loopthon-2026';
+// 시드 로그인만 확인하면 되므로 실행마다 무작위 값을 쓴다(소스에 비밀번호 리터럴을 두면 비밀 탐지에 걸린다).
+const SEED_PASSWORD = randomUUID();
 
 // 기대값은 frontend/specs/mock-data.md 「시드」에서 그대로 옮겼다. 시드 상수를 다시 import하지 않아야 글자가 어긋날 때 테스트가 잡는다.
 const EXP1 = {
