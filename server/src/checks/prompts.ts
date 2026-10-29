@@ -79,7 +79,8 @@ export const judgeSchema = z.object({
   judge: z.array(z.object({ id: z.enum(JUDGE_IDS), result: z.enum(JUDGE_RESULTS) })).min(1),
   nextQuestion: z.string().nullable(),
   // experienceId는 생성 자소서에서 AI가 고른 근거 카드다. 서버가 문항 근거 카드 목록과 대조해 바로잡는다(명세 08).
-  candidates: z.array(z.object({ item: z.enum(ITEMS), text: z.string(), experienceId: z.string().nullish() })),
+  // nullish(선택 칸)가 아니라 nullable: Gateway strict 스키마는 모든 칸이 required여야 한다(아니면 400).
+  candidates: z.array(z.object({ item: z.enum(ITEMS), text: z.string(), experienceId: z.string().nullable() })),
 });
 export type JudgeAiResult = z.infer<typeof judgeSchema>;
 

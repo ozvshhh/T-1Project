@@ -852,7 +852,7 @@ describe('C8-1 /api/cover-letters/:id/checks create·get·list', () => {
         'check-answer',
         judged([
           { item: 'result', text: '대기 시간이 20분 줄었다', experienceId: new Types.ObjectId().toHexString() },
-          { item: 'role', text: '동선 담당이었다' },
+          { item: 'role', text: '동선 담당이었다', experienceId: null },
         ]),
       );
       const second = await answer(a.token, checkId, sentenceId, '두 번째 답');
@@ -878,7 +878,7 @@ describe('C8-1 /api/cover-letters/:id/checks create·get·list', () => {
         'check-answer',
         judged([
           { item: 'action', text: '집계표를 만들었다', experienceId: new Types.ObjectId().toHexString() },
-          { item: 'result', text: '   ' },
+          { item: 'result', text: '   ', experienceId: null },
         ]),
       );
 
@@ -894,7 +894,7 @@ describe('C8-1 /api/cover-letters/:id/checks create·get·list', () => {
     it('stores no candidate when the AI fails or the judge is off-schema', async () => {
       const { checkId, sentenceId } = await pastedStarted(a.token);
       fake.fail('check-answer');
-      fake.queue('check-answer', { unknown: false, judge: [], nextQuestion: null, candidates: [{ item: 'action', text: 'x' }] });
+      fake.queue('check-answer', { unknown: false, judge: [], nextQuestion: null, candidates: [{ item: 'action', text: 'x', experienceId: null }] });
       expect((await answer(a.token, checkId, sentenceId)).status).toBe(502);
       expect((await answer(a.token, checkId, sentenceId)).status).toBe(502);
       expect(await candidatesOf(a.token, checkId)).toEqual([]);
@@ -906,8 +906,8 @@ describe('C8-1 /api/cover-letters/:id/checks create·get·list', () => {
       fake.queue(
         'check-answer',
         judged([
-          { item: 'action', text: '집계표를 만들었다' },
-          { item: 'result', text: '방문객이 늘었다' },
+          { item: 'action', text: '집계표를 만들었다', experienceId: null },
+          { item: 'result', text: '방문객이 늘었다', experienceId: null },
         ]),
       );
       const [first, second] = ((await answer(a.token, checkId, sentenceId)).body as AnswerBody).newCandidates;
@@ -960,7 +960,7 @@ describe('C8-1 /api/cover-letters/:id/checks create·get·list', () => {
     // 확인하지 않은 출처·다른 경험의 단서를 받으면 출처 보기(R5)가 엉뚱한 자료를 연다: 400이고 후보는 남는다.
     it('confirm returns 400 for ai_unverified, missing fields or a clue rule violation and keeps the candidate', async () => {
       const { checkId, sentenceId } = await pastedStarted(a.token);
-      fake.queue('check-answer', judged([{ item: 'action', text: '집계표를 만들었다' }]));
+      fake.queue('check-answer', judged([{ item: 'action', text: '집계표를 만들었다', experienceId: null }]));
       const [cand] = ((await answer(a.token, checkId, sentenceId)).body as AnswerBody).newCandidates;
       const expId = await experience(a.token);
       const otherExp = await experience(a.token, '다른 경험');
@@ -989,7 +989,7 @@ describe('C8-1 /api/cover-letters/:id/checks create·get·list', () => {
     // 남의 경험·점검에는 넣을 수 없어야 하고, 있는지조차 알 수 없어야 한다(R1).
     it('confirm and delete return 404 for another user’s experience or check and malformed ids, 401 without a token', async () => {
       const { checkId, sentenceId } = await pastedStarted(a.token);
-      fake.queue('check-answer', judged([{ item: 'action', text: '집계표를 만들었다' }]));
+      fake.queue('check-answer', judged([{ item: 'action', text: '집계표를 만들었다', experienceId: null }]));
       const [cand] = ((await answer(a.token, checkId, sentenceId)).body as AnswerBody).newCandidates;
       const myExp = await experience(a.token);
       const bExp = await experience(b.token);
@@ -1013,8 +1013,8 @@ describe('C8-1 /api/cover-letters/:id/checks create·get·list', () => {
       fake.queue(
         'check-answer',
         judged([
-          { item: 'action', text: '집계표를 만들었다' },
-          { item: 'result', text: '방문객이 늘었다' },
+          { item: 'action', text: '집계표를 만들었다', experienceId: null },
+          { item: 'result', text: '방문객이 늘었다', experienceId: null },
         ]),
       );
       const [first, second] = ((await answer(a.token, checkId, sentenceId)).body as AnswerBody).newCandidates;
