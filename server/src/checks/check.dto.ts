@@ -1,4 +1,6 @@
+import { BadRequestException } from '@nestjs/common';
 import { Types } from 'mongoose';
+import { asObject } from '../auth/signup.validation';
 import { FactOrigin, FactSource, FactStatus } from '../experiences/fact.schema';
 import { Item } from '../experiences/experience.schema';
 import { Check, CheckCandidate, CheckSentence, JudgeResult, SentenceStatus } from './check.schema';
@@ -32,6 +34,26 @@ export interface CheckDto {
   sentences: CheckSentenceDto[];
   candidates: CheckCandidateDto[];
   createdAt: string;
+}
+
+// 답하기 응답(api.md 9절). 후보를 점검에 쌓는 일은 C8-4가 맡는다.
+export interface AnswerResultDto {
+  sentence: CheckSentenceDto;
+  newCandidates: CheckCandidateDto[];
+}
+
+// 답하기 본문 { text }(api.md 9절). 공백만 있는 답은 판정할 내용 없이 AI 비용만 쓰므로 빈 값과 같이 400.
+export function validateAnswerText(body: unknown): string {
+  const text = asObject(body).text;
+  const trimmed = typeof text === 'string' ? text.trim() : '';
+  if (trimmed === '') {
+    throw new BadRequestException({
+      code: 'VALIDATION',
+      message: '입력값을 확인해 주세요.',
+      details: [{ field: 'text', reason: '답을 입력해 주세요.' }],
+    });
+  }
+  return trimmed;
 }
 
 type CheckRecord = Check & { _id: Types.ObjectId };

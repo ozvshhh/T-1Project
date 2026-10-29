@@ -1,14 +1,18 @@
-import { ConflictException, Injectable, NotFoundException, NotImplementedException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
+import { AiUnavailableError } from '../ai/ai-unavailable.error';
 import { AiService } from '../ai/ai.service';
 import { assertOwner, parseObjectIdOr404 } from '../common/ownership';
 import { CoverLetter } from '../cover-letters/cover-letter.schema';
-import { CheckDto, CheckSentenceDto, toCheckDto, toSentenceDto } from './check.dto';
-import { Check, INITIAL_FOLLOW_UPS } from './check.schema';
+import { AnswerResultDto, CheckDto, CheckSentenceDto, toCheckDto, toSentenceDto } from './check.dto';
+import { Check, INITIAL_FOLLOW_UPS, SentenceStatus } from './check.schema';
 import {
+  buildJudgeInput,
   buildQuestionInput,
   buildSentencesInput,
+  JUDGE_SYSTEM,
+  judgeSchema,
   QUESTION_SYSTEM,
   questionSchema,
   SENTENCES_SYSTEM,
@@ -129,12 +133,89 @@ export class ChecksService {
     return toSentenceDto(this.findSentence(current, sentenceId));
   }
 
-  // 답하기(R10·R11). 오래된 점검이면 판정·AI보다 먼저 409로 막는다(오래된 점검은 볼 수만 있다, 학생 답 2026-10-30).
-  // 판정·상태 결정(①~④)은 명세 08 C8-3 주장이 이 자리에 붙인다. 그 전에는 AI를 부르지 않고 501로 알린다.
-  async answer(userId: string, checkId: string, sentenceId: string): Promise<never> {
+  // 답하기(R10·R11). 오래된 점검·시작 전·끝난 문장은 AI보다 먼저 409로 막는다(오래된 점검은 볼 수만 있다, 학생 답 2026-10-30).
+  // AI는 기준별 met/missing만 고르고 상태는 서버가 ①~④ 순서로 정한다(명세 08). AI 성공 뒤에만 저장한다(C2).
+  async answer(userId: string, checkId: string, sentenceId: string, text: string): Promise<AnswerResultDto> {
     const check = await this.findActive(userId, checkId);
-    this.findSentence(check, sentenceId);
-    throw new NotImplementedException({ code: 'NOT_IMPLEMENTED', message: '답 판정은 아직 준비 중이에요.' });
+    const sentence = this.findSentence(check, sentenceId);
+    this.assertInProgress(sentence);
+
+    const owned = await this.findCoverLetter(userId, String(check.coverLetterId));
+    const itemOid = sentence.coverLetterItemId;
+    const item = itemOid ? (owned.items ?? []).find((i) => i._id.equals(itemOid)) : undefined;
+    const turns = sentence.turns ?? [];
+    const result = await this.ai.json({
+      task: 'check-answer',
+      system: JUDGE_SYSTEM,
+      user: buildJudgeInput({
+        sentence: sentence.text,
+        context: item ? { question: item.question, text: item.answer ?? '' } : { text: owned.body ?? '' },
+        turns,
+        answer: text,
+      }),
+      schema: judgeSchema,
+    });
+
+    // 같은 기준이 두 번 오면 첫 판정만 남긴다(기준별로 한 줄이어야 프런트가 빠진 요소를 하나씩 보여 준다).
+    const judge = result.judge.filter((j, i, all) => all.findIndex((o) => o.id === j.id) === i);
+    const answeredTurns = turns.map((t, i) =>
+      i === turns.length - 1 ? { question: t.question, answer: text, judge } : { question: t.question, answer: t.answer, judge: t.judge },
+    );
+
+    let status: SentenceStatus;
+    let followUpsLeft = sentence.followUpsLeft;
+    const nextTurns = [...answeredTurns];
+    if (result.unknown) {
+      // ① 모름·경험 없음은 J 판정보다 먼저 끝낸다(R11).
+      status = 'unknown';
+    } else if (judge.every((j) => j.result === 'met')) {
+      // ② 해당 기준이 모두 충족.
+      status = 'explained';
+    } else if (followUpsLeft > 0) {
+      // ③ 빠진 기준이 있고 추가 질문이 남았다: 다음 질문이 없으면 이어 갈 수 없으므로 AI 형식 오류(502)로 본다.
+      const nextQuestion = result.nextQuestion?.trim();
+      if (!nextQuestion) throw new AiUnavailableError();
+      nextTurns.push({ question: nextQuestion, answer: null, judge: [] });
+      followUpsLeft -= 1;
+      status = 'in_progress';
+    } else {
+      // ④ 상한까지 물었는데 빠진 기준이 남았다.
+      status = 'needs_more';
+    }
+
+    // in_progress·turn 수 조건을 걸어 동시에 두 번 답해도 한 번만 반영된다. AI 사이에 오래됨이 되면 저장하지 않는다.
+    const updated = await this.checks
+      .findOneAndUpdate(
+        {
+          _id: check._id,
+          stale: false,
+          sentences: { $elemMatch: { _id: sentence._id, status: 'in_progress', turns: { $size: turns.length } } },
+        },
+        {
+          $set: {
+            'sentences.$.status': status,
+            'sentences.$.followUpsLeft': followUpsLeft,
+            'sentences.$.turns': nextTurns,
+          },
+        },
+        { returnDocument: 'after' },
+      )
+      .lean<CheckRecord>();
+    if (updated) return { sentence: toSentenceDto(this.findSentence(updated, sentenceId)), newCandidates: [] };
+    // 다른 요청이 먼저 답했거나 그사이 오래됨이 됐다: 다시 읽어 같은 규칙(409)으로 답하고, 아직 진행 중이면 지금 상태를 돌려준다.
+    const current = this.findSentence(await this.findActive(userId, checkId), sentenceId);
+    this.assertInProgress(current);
+    return { sentence: toSentenceDto(current), newCandidates: [] };
+  }
+
+  // 질문 없이 답을 받거나 끝난 판정을 덮어쓰지 않도록 진행 중인 문장만 답을 받는다(api.md 9절).
+  private assertInProgress(sentence: CheckRecord['sentences'][number]): void {
+    if (sentence.status === 'pending') {
+      throw new ConflictException({ code: 'SENTENCE_NOT_STARTED', message: '먼저 이 문장의 질문을 시작해 주세요.' });
+    }
+    if (sentence.status !== 'in_progress') {
+      throw new ConflictException({ code: 'SENTENCE_FINISHED', message: '이미 점검을 마친 문장이에요.' });
+    }
   }
 
   // 소유 확인(404) 뒤 오래된 점검이면 409 CHECK_STALE. 자소서가 바뀐 뒤의 점검으로 이어 가면 지금 글과 다른 문장을 해명하게 된다.

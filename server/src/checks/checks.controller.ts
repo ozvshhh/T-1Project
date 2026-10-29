@@ -1,6 +1,6 @@
-import { Controller, Get, HttpCode, HttpStatus, Param, Post } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post } from '@nestjs/common';
 import { AuthUser, CurrentUser } from '../auth/current-user.decorator';
-import { CheckDto, CheckSentenceDto } from './check.dto';
+import { AnswerResultDto, CheckDto, CheckSentenceDto, validateAnswerText } from './check.dto';
 import { ChecksService } from './checks.service';
 
 // 제출 전 점검 API(api.md 9절). @Public()이 없으므로 전역 가드가 토큰을 요구하고, 사용자는 토큰에서만 얻는다.
@@ -38,14 +38,15 @@ export class ChecksController {
     return { sentence: await this.service.start(user.id, checkId, sentenceId) };
   }
 
-  // 답하기(R10~R12). 오래된 점검은 본문을 읽기 전에 409 CHECK_STALE로 막는다.
+  // 답하기(R10~R12). 본문 검증을 소유자 조회보다 먼저 해 400 여부로 남의 점검을 떠볼 수 없게 한다.
   @Post('checks/:checkId/sentences/:sentenceId/answers')
   @HttpCode(HttpStatus.OK)
   async answer(
     @CurrentUser() user: AuthUser,
     @Param('checkId') checkId: string,
     @Param('sentenceId') sentenceId: string,
-  ): Promise<never> {
-    return this.service.answer(user.id, checkId, sentenceId);
+    @Body() body: unknown,
+  ): Promise<AnswerResultDto> {
+    return this.service.answer(user.id, checkId, sentenceId, validateAnswerText(body));
   }
 }

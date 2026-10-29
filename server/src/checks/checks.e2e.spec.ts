@@ -508,4 +508,205 @@ describe('C8-1 /api/cover-letters/:id/checks create·get·list', () => {
       expectNotFound(await answers(b.token, check.id, check.sentences[0].id));
     });
   });
+
+  // 답 판정(R10·R11)은 상태를 서버가 정해야 AI가 마음대로 「설명됨」을 고르지 못한다(명세 08 ①~④).
+  describe('C8-3 POST sentences/:sentenceId/answers', () => {
+    const SENTENCE = '저는 축제 운영팀장으로 방문객을 30% 늘렸습니다.';
+    const OTHER = '팀원들과 매주 회의를 했습니다.';
+
+    interface TurnBody {
+      question: string;
+      answer: string | null;
+      judge: { id: string; result: string }[];
+    }
+    type AnswerBody = { sentence: Omit<SentenceBody, 'turns'> & { turns: TurnBody[] }; newCandidates: unknown[] };
+
+    const start = (token: string, checkId: string, sentenceId: string) =>
+      http().post(`/api/checks/${checkId}/sentences/${sentenceId}/start`).set(auth(token));
+    const answer = (token: string, checkId: string, sentenceId: string, body: unknown) =>
+      http()
+        .post(`/api/checks/${checkId}/sentences/${sentenceId}/answers`)
+        .set(auth(token))
+        .send(body as object);
+
+    const MISSING = { unknown: false, judge: [{ id: 'J1', result: 'missing' }, { id: 'J2', result: 'met' }], candidates: [] };
+
+    // 점검 하나를 만들고 첫 문장을 시작해 둔다(첫 질문 Q1, followUpsLeft 3).
+    async function started(token: string): Promise<{ check: CheckBody; sentenceId: string }> {
+      const id = await pasted(token);
+      fake.queue('check-sentences', {
+        sentences: [
+          { text: SENTENCE, coverLetterItemId: null },
+          { text: OTHER, coverLetterItemId: null },
+        ],
+      });
+      const check = await createOk(token, id);
+      fake.queue('check-question', { question: 'Q1' });
+      await start(token, check.id, check.sentences[0].id).expect(200);
+      return { check, sentenceId: check.sentences[0].id };
+    }
+
+    // 점수는 어디에도 없어야 한다(R11): 응답 JSON 전체를 훑어 score·points 같은 키가 없음을 확인한다.
+    function expectNoScore(value: unknown): void {
+      if (Array.isArray(value)) return value.forEach(expectNoScore);
+      if (value && typeof value === 'object') {
+        for (const [key, inner] of Object.entries(value)) {
+          expect(key).not.toMatch(/score|point|grade|rating/i);
+          expectNoScore(inner);
+        }
+      }
+    }
+
+    // ① 모른다고 답하면 J 판정보다 먼저 unknown으로 끝내야 같은 기준으로 다시 캐묻지 않는다(R11, 학생 답 2026-10-30).
+    it('(a) unknown: true with every J missing ends as unknown and records the answer without a new turn', async () => {
+      const { check, sentenceId } = await started(a.token);
+      fake.queue('check-answer', {
+        unknown: true,
+        judge: [{ id: 'J1', result: 'missing' }, { id: 'J2', result: 'missing' }],
+        nextQuestion: 'q',
+        candidates: [],
+      });
+
+      const res = await answer(a.token, check.id, sentenceId, { text: '정확히 기억은 안 나요' });
+
+      expect(res.status).toBe(200);
+      expect(Object.keys(res.body as object).sort()).toEqual(['newCandidates', 'sentence']);
+      const { sentence } = res.body as AnswerBody;
+      expect(sentence.status).toBe('unknown');
+      expect(sentence.followUpsLeft).toBe(3);
+      expect(sentence.turns).toEqual([
+        {
+          question: 'Q1',
+          answer: '정확히 기억은 안 나요',
+          judge: [{ id: 'J1', result: 'missing' }, { id: 'J2', result: 'missing' }],
+        },
+      ]);
+      expectNoScore(res.body);
+      // 판정 AI에는 문장·질문·답과 J 기준 문장이 함께 가야 기준대로 판정한다.
+      const call = fake.calls.find((c) => c.task === 'check-answer');
+      expect(call?.user).toContain(SENTENCE);
+      expect(call?.user).toContain('Q1');
+      expect(call?.user).toContain('정확히 기억은 안 나요');
+      expect(call?.system).toContain('계산 방법, 비교 기준(무엇 대비), 기간');
+
+      const saved = (await getCheck(a.token, check.id).expect(200)).body as { check: CheckBody };
+      expect(saved.check.sentences[0]).toEqual(sentence);
+    });
+
+    // ② 해당 기준이 모두 met이면 설명됨으로 끝난다.
+    it('(b) all judge met ends as explained', async () => {
+      const { check, sentenceId } = await started(a.token);
+      fake.queue('check-answer', {
+        unknown: false,
+        judge: [{ id: 'J1', result: 'met' }, { id: 'J4', result: 'met' }],
+        nextQuestion: null,
+        candidates: [],
+      });
+
+      const res = await answer(a.token, check.id, sentenceId, { text: '3월 대비 5월 방문객 수로 계산했어요' });
+
+      expect(res.status).toBe(200);
+      const { sentence } = res.body as AnswerBody;
+      expect(sentence.status).toBe('explained');
+      expect(sentence.turns).toHaveLength(1);
+      expect(sentence.turns[0].answer).toBe('3월 대비 5월 방문객 수로 계산했어요');
+      expect(sentence.followUpsLeft).toBe(3);
+      expectNoScore(res.body);
+    });
+
+    // ③④ 빠진 기준이 남으면 추가 질문을 3번까지만 하고, 상한에 닿으면 needs_more로 끝나야 끝없이 캐묻지 않는다(R10).
+    it('(c) missing three times in a row asks 3 follow-ups then ends as needs_more with 4 turns', async () => {
+      const { check, sentenceId } = await started(a.token);
+
+      for (let i = 1; i <= 3; i++) {
+        fake.queue('check-answer', { ...MISSING, nextQuestion: `F${i}` });
+        const res = await answer(a.token, check.id, sentenceId, { text: `답${i}` });
+        expect(res.status).toBe(200);
+        const { sentence } = res.body as AnswerBody;
+        expect(sentence.status).toBe('in_progress');
+        expect(sentence.followUpsLeft).toBe(3 - i);
+        expect(sentence.turns).toHaveLength(i + 1);
+        expect(sentence.turns[i]).toEqual({ question: `F${i}`, answer: null, judge: [] });
+        expect(sentence.turns[i - 1].answer).toBe(`답${i}`);
+        expectNoScore(res.body);
+      }
+
+      fake.queue('check-answer', { ...MISSING, nextQuestion: 'F4' });
+      const last = await answer(a.token, check.id, sentenceId, { text: '답4' });
+
+      expect(last.status).toBe(200);
+      const { sentence } = last.body as AnswerBody;
+      expect(sentence.status).toBe('needs_more');
+      expect(sentence.followUpsLeft).toBe(0);
+      expect(sentence.turns.map((t) => t.question)).toEqual(['Q1', 'F1', 'F2', 'F3']);
+      expect(sentence.turns.map((t) => t.answer)).toEqual(['답1', '답2', '답3', '답4']);
+      expect(sentence.turns.every((t) => t.judge.length > 0)).toBe(true);
+    });
+
+    // 시작 전·끝난 문장에 답을 받으면 질문 없는 답이나 끝난 판정을 덮어쓰게 된다: AI 없이 409.
+    it('returns 409 SENTENCE_NOT_STARTED before start and 409 SENTENCE_FINISHED after the sentence ends, without calling the AI', async () => {
+      const { check, sentenceId } = await started(a.token);
+      fake.reset();
+
+      const notStarted = await answer(a.token, check.id, check.sentences[1].id, { text: '답' });
+      expect(notStarted.status).toBe(409);
+      expect((notStarted.body as ErrorBody).error.code).toBe('SENTENCE_NOT_STARTED');
+      expect(fake.calls).toEqual([]);
+
+      fake.queue('check-answer', { unknown: false, judge: [{ id: 'J2', result: 'met' }], nextQuestion: null, candidates: [] });
+      await answer(a.token, check.id, sentenceId, { text: '제가 직접 했어요' }).expect(200);
+      const callsBefore = fake.calls.length;
+
+      const finished = await answer(a.token, check.id, sentenceId, { text: '또 답' });
+      expect(finished.status).toBe(409);
+      expect((finished.body as ErrorBody).error.code).toBe('SENTENCE_FINISHED');
+      expect(fake.calls).toHaveLength(callsBefore);
+    });
+
+    // 빈 답은 판정할 내용이 없다: AI 비용 없이 400.
+    it('returns 400 for an empty, blank or missing text without calling the AI', async () => {
+      const { check, sentenceId } = await started(a.token);
+      fake.reset();
+
+      for (const body of [{ text: '' }, { text: '   ' }, {}, { text: 3 }]) {
+        const res = await answer(a.token, check.id, sentenceId, body);
+        expect(res.status).toBe(400);
+        expect((res.body as ErrorBody).error.code).toBe('VALIDATION');
+      }
+      expect(fake.calls).toEqual([]);
+    });
+
+    // AI가 실패했는데 답이나 turn이 저장되면 판정 없는 기록이 남는다(C2): 502이고 문장·후보는 그대로다.
+    it('returns 502 and keeps turns, followUpsLeft, status and candidates when the AI fails, answers off-schema, empty judge, or missing without a next question', async () => {
+      const { check, sentenceId } = await started(a.token);
+      const before = ((await getCheck(a.token, check.id).expect(200)).body as { check: CheckBody }).check;
+
+      fake.fail('check-answer');
+      fake.queue('check-answer', { unknown: 'no', judge: 'x' });
+      fake.queue('check-answer', { unknown: false, judge: [], nextQuestion: null, candidates: [] });
+      fake.queue('check-answer', { ...MISSING, nextQuestion: null });
+      fake.queue('check-answer', { ...MISSING, nextQuestion: '   ' });
+
+      for (let i = 0; i < 5; i++) {
+        const res = await answer(a.token, check.id, sentenceId, { text: '답' });
+        expect(res.status).toBe(502);
+        expect((res.body as ErrorBody).error.code).toBe('AI_UNAVAILABLE');
+      }
+
+      const after = ((await getCheck(a.token, check.id).expect(200)).body as { check: CheckBody }).check;
+      expect(after.sentences).toEqual(before.sentences);
+      expect(after.candidates).toEqual(before.candidates);
+    });
+
+    // 남의 점검은 있는지조차 알 수 없어야 한다(R1).
+    it('returns 404 for others’ checks and missing or malformed ids without calling the AI', async () => {
+      const { check, sentenceId } = await started(a.token);
+      fake.reset();
+
+      expectNotFound(await answer(b.token, check.id, sentenceId, { text: '답' }));
+      expectNotFound(await answer(a.token, check.id, 'not-an-id', { text: '답' }));
+      expectNotFound(await answer(a.token, new Types.ObjectId().toHexString(), sentenceId, { text: '답' }));
+      expect(fake.calls).toEqual([]);
+    });
+  });
 });
