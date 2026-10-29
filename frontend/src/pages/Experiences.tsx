@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 import { api } from '@/api/client'
 import type { Experience } from '@/api/types'
-import { ErrorView, Loading } from '@/components/States'
+import { Empty, ErrorView, Loading } from '@/components/States'
 import { StageBlock } from '@/components/StageBlock'
 import { ITEM_LABELS, ITEM_ORDER } from '@/lib/cards'
 import { useLoad } from '@/lib/useLoad'
@@ -42,8 +42,8 @@ export default function Experiences() {
       <StageBlock stage="experience">
         <h1 className="h2">경험</h1>
         <div>
-          <Link to="/experiences/new" className="btn btn-primary">
-            경험 추가
+          <Link to="/resume" className="btn btn-primary">
+            이력서에서 활동 추가
           </Link>
         </div>
       </StageBlock>
@@ -52,9 +52,7 @@ export default function Experiences() {
       ) : error || !data ? (
         <ErrorView message={error?.message ?? '불러오지 못했어요.'} onRetry={reload} />
       ) : data.length === 0 ? (
-        <div className="row-pending rounded-row p-6">
-          <p className="text-[15px]">아직 경험이 없어요</p>
-        </div>
+        <Empty text="아직 경험이 없어요" to="/resume" action="이력서 입력" />
       ) : (
         <ul className="grid gap-3">
           {data.map((experience) => (

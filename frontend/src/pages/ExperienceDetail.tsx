@@ -110,73 +110,103 @@ function Detail({
   }
 
   return (
-    <main className="wrap grid gap-4 pt-12 pb-12">
-      {returnTo && (
-        <div>
-          <Link to={returnTo} className="btn btn-sm btn-secondary">
-            문항으로 돌아가기
-          </Link>
-        </div>
-      )}
-      <StageBlock stage="experience">
-        <Header experience={experience} onChange={setExperience} clueFailed={clueFailed} />
-      </StageBlock>
-
-      <div className="grid gap-4 md:grid-cols-2">
-        <StageBlock stage="experience" className="grid content-start gap-4">
-          <h2 className="h2">대화</h2>
-          <ol className="grid gap-3" aria-label="대화 내용">
-            {messages.map((m, i) => (
-              <li key={i} className="inner-card flex gap-3">
-                <span className="label">{m.role === 'ai' ? 'AI' : '나'}</span>
-                <span className="text-[15px]">{m.text}</span>
-              </li>
-            ))}
-          </ol>
-          <form onSubmit={send} className="grid gap-3">
-            <p className="meta">오른쪽 상태를 보고 충분하면 언제든 멈춰도 돼요.</p>
-            <div>
-              <label htmlFor="answer" className="label mb-2 block">
-                답변
-              </label>
-              <textarea
-                id="answer"
-                className="field"
-                rows={4}
-                value={answer}
-                onChange={(e) => setAnswer(e.target.value)}
-              />
-            </div>
-            <AiStatus busy={ai.busy} failed={ai.failed} error={ai.error} onRetry={ai.retry} />
-            <div>
-              <button
-                type="submit"
-                className="btn btn-primary"
-                disabled={ai.busy || !answer.trim()}
-              >
-                보내기
-              </button>
-            </div>
-          </form>
+    <main className="wrap grid items-start gap-4 pt-12 pb-12 lg:grid-cols-[14rem_1fr]">
+      <ActivityList current={experience} />
+      <div className="grid gap-4">
+        {returnTo && (
+          <div>
+            <Link to={returnTo} className="btn btn-sm btn-secondary">
+              문항으로 돌아가기
+            </Link>
+          </div>
+        )}
+        <StageBlock stage="experience">
+          <Header experience={experience} onChange={setExperience} clueFailed={clueFailed} />
         </StageBlock>
 
-        <div className="grid content-start gap-4">
-          <StageBlock stage="experience" className="grid gap-3">
-            <h2 className="h2">항목 상태</h2>
-            <div className="grid gap-2" aria-live="polite">
-              {ITEM_ORDER.map((item) => (
-                <StatusRow key={item} kind={statusKind(itemStatus[item])}>
-                  {ITEM_LABELS[item]}
-                </StatusRow>
+        <div className="grid gap-4 md:grid-cols-2">
+          <StageBlock stage="experience" className="grid content-start gap-4">
+            <h2 className="h2">대화</h2>
+            <ol className="grid gap-3" aria-label="대화 내용">
+              {messages.map((m, i) => (
+                <li key={i} className="inner-card flex gap-3">
+                  <span className="label">{m.role === 'ai' ? 'AI' : '나'}</span>
+                  <span className="text-[15px]">{m.text}</span>
+                </li>
               ))}
-            </div>
-            <p className="meta">카드를 고쳐도 상태는 바뀌지 않아요. 다시 대화하면 갱신돼요.</p>
+            </ol>
+            <form onSubmit={send} className="grid gap-3">
+              <p className="meta">오른쪽 상태를 보고 충분하면 언제든 멈춰도 돼요.</p>
+              <div>
+                <label htmlFor="answer" className="label mb-2 block">
+                  답변
+                </label>
+                <textarea
+                  id="answer"
+                  className="field"
+                  rows={4}
+                  value={answer}
+                  onChange={(e) => setAnswer(e.target.value)}
+                />
+              </div>
+              <AiStatus busy={ai.busy} failed={ai.failed} error={ai.error} onRetry={ai.retry} />
+              <div>
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  disabled={ai.busy || !answer.trim()}
+                >
+                  보내기
+                </button>
+              </div>
+            </form>
           </StageBlock>
-          <CandidatePanel experience={experience} onChange={setExperience} />
-          <CardPanel experience={experience} onChange={setExperience} />
+
+          <div className="grid content-start gap-4">
+            <StageBlock stage="experience" className="grid gap-3">
+              <h2 className="h2">항목 상태</h2>
+              <div className="grid gap-2" aria-live="polite">
+                {ITEM_ORDER.map((item) => (
+                  <StatusRow key={item} kind={statusKind(itemStatus[item])}>
+                    {ITEM_LABELS[item]}
+                  </StatusRow>
+                ))}
+              </div>
+              <p className="meta">카드를 고쳐도 상태는 바뀌지 않아요. 다시 대화하면 갱신돼요.</p>
+            </StageBlock>
+            <CandidatePanel experience={experience} onChange={setExperience} />
+            <CardPanel experience={experience} onChange={setExperience} />
+          </div>
         </div>
       </div>
     </main>
+  )
+}
+
+/** 왼쪽 활동 목록: 모든 경험, 지금 경험 강조, 누르면 그 경험으로 이동(specs/04). */
+function ActivityList({ current }: { current: Experience }) {
+  const { data } = useLoad(async () => (await api.listExperiences()).experiences)
+  const list = (data ?? [current]).map((e) => (e.id === current.id ? { ...e, ...current } : e))
+  return (
+    <nav aria-label="활동 목록" className="grid content-start gap-3">
+      <h2 className="label">활동</h2>
+      <ul className="grid gap-2">
+        {list.map((e) => (
+          <li key={e.id}>
+            <Link
+              to={`/experiences/${e.id}`}
+              aria-current={e.id === current.id ? 'page' : undefined}
+              className={`${e.id === current.id ? 'row-select' : 'row'} rounded-row block px-3 py-2 text-[15px]`}
+            >
+              {e.title}
+            </Link>
+          </li>
+        ))}
+      </ul>
+      <Link to="/resume" className="btn btn-sm btn-secondary">
+        이력서에서 활동 추가
+      </Link>
+    </nav>
   )
 }
 

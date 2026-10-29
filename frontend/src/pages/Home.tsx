@@ -53,8 +53,8 @@ export default function Home() {
         <StageBlock stage="experience">
           <p className="h2">경험 카드를 먼저 하나 확정해야 자소서를 쓰고 점검할 수 있어요.</p>
           <div className="flex flex-wrap gap-3">
-            <Link to="/experiences/new" className="btn btn-primary">
-              경험 등록
+            <Link to="/resume" className="btn btn-primary">
+              이력서 입력
             </Link>
             {data.experiences.length > 0 && (
               <Link to="/experiences" className="btn btn-secondary">

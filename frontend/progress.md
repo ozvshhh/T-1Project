@@ -50,3 +50,5 @@
 - [20] 목 API에 /api/resume(조회·활동 나누기·초안 추가/수정/삭제·확정) 추가, POST /api/experiences와 createExperience 삭제, 경험 summary·시드 이력서·라라테크 자소서 추가, resume.test.ts 추가.
   남은 일: 21번(ExperienceNew는 지울 때까지 addDraft+confirmDrafts로 임시 연결). 시드 자소서가 2개가 되어 coverLetters.test(목)·CoverLetterWrite.test S5의 생성 자소서 수를 시드 빼고 세도록 고침.
   막힌 점: 전체 vitest에서 매번 다른 화면 테스트 하나가 가끔 부하 flake로 실패(단독·재실행은 통과).
+- [21] Resume(E) 신설(붙여넣기·활동 나누기·확인할 활동 고치기/빼기/직접 추가·경험 만들기), ExperienceNew 삭제, /resume 라우트, 홈 `이력서 입력`·목록 `이력서에서 활동 추가`, 경험 상세 왼쪽 활동 목록, Resume.test.tsx 추가, Experiences/Home/FactPanels 테스트를 새 흐름(S2 포함)으로 수정.
+  남은 일: 22번 디자인 기반(경험 상세 세 칸 배치는 23번). 막힌 점: 기본 워커 수 전체 vitest에서 CoverLetterPaste 같은 무관한 테스트가 가끔 부하 flake(단독·--maxWorkers=2는 통과).
