@@ -10,7 +10,7 @@
 - [ ] **0-1 결정 6건 답하기** (progress.md 「2-C 학생 답 대기」): 구현 우선순위, 제외·보류 범위, F3 초안 형식·수정 가능 여부, 답변 판단 AI 실패 시 동작, 첫 화면 이름·한 줄 설명(프런트 팀원), 배포 DB. 답이 없으면 아래 「기본값」으로 루프를 돌리고, 답이 오면 명세를 고친다.
 - [ ] **0-2 저장소 구조 합의(프런트 팀원과)**: 루트 `Dockerfile`은 nginx 정적 서빙(PR #13). 백엔드는 `server/`에 NestJS, compose에 `server`·`db` 서비스 추가, nginx가 `/api/`·`/__health`를 `server`로 넘기는 구조(아래 1단계). `frontend/vercel.json`·`frontend/api/health.ts`는 compose 경로와 무관하지만 `/__health` 응답이 둘이 되지 않게 Vercel 쪽 정리는 프런트 팀원이.
 - [ ] **0-3 로컬 도구 확인**: node 22, docker 29, compose v5.5, claude 2.1 — 2026-10-29 확인됨. Docker Desktop이 켜져 있어야 루프의 docker 검증이 돈다.
-- [ ] **0-4 AI 키**: 대시보드 **자료 → API 키**에서 발급(없으면 「API 키 발급하기」), 값은 `server/.env`(Git 제외)의 `AI_GATEWAY_API_KEY`에만 넣기. 채팅·커밋에 붙이지 않기. 4단계(자소서 초안) 전까지.
+- [x] **0-4 AI 키**: `server/.env`(Git 제외)의 `AI_GATEWAY_API_KEY`에 학생이 직접 입력(2026-10-29 밤). 채팅·커밋에 붙이지 않기. **실제 Gateway 호출 확인은 Agent가 4·5·7단계에서 각 1회, 건당 $0.05 상한**(학생 결정 2026-10-29). 결과는 `server/ralph/reviews/C<n>-manual.md`에 기록하고, 호출한 날 학생이 **자료 → API 키**에서 사용액을 알려 준다.
 - [ ] **0-5 배포 DB 계정**: MongoDB로 가면 Atlas 무료 등급 계정·클러스터를 학생이 만들고 연결 문자열을 Vercel 환경변수 `DATABASE_URL`에 직접 입력. 8단계 전까지.
 - [ ] **0-6 Vercel**: 학생 계정으로 로그인·GitHub 저장소 연결. 8단계에서.
 - [ ] **0-7 대시보드 화면 확인** 요청이 오면: **자료 → 제출 요건**(노란 줄), **우리 팀**(UP·배포 commit). 1단계 push 뒤와 최종.
