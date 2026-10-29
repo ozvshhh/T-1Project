@@ -8,3 +8,6 @@ export const BCRYPT_ROUNDS = 10;
 
 // 만료는 api.md 11절 「학생 답 대기」라 환경변수로만 바꾼다.
 export const DEFAULT_JWT_EXPIRES_IN = '7d';
+
+// JWT_SECRET이 비었을 때 만드는 임시 비밀의 바이트 수. 32바이트(256비트)면 HS256 키로 추측할 수 없다.
+export const GENERATED_JWT_SECRET_BYTES = 32;

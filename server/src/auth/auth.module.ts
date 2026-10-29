@@ -1,17 +1,29 @@
-import { Module } from '@nestjs/common';
+import { randomBytes } from 'node:crypto';
+import { Logger, Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { JwtModule, JwtModuleOptions } from '@nestjs/jwt';
 import { MongooseModule } from '@nestjs/mongoose';
 import { User, UserSchema } from '../users/user.schema';
-import { DEFAULT_JWT_EXPIRES_IN } from './auth.config';
+import { DEFAULT_JWT_EXPIRES_IN, GENERATED_JWT_SECRET_BYTES } from './auth.config';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './jwt-auth.guard';
 
-// 비밀·만료는 환경변수에서 읽는다(코드에 박으면 배포마다 같은 비밀이 된다). 빈 비밀 처리는 C3-4 범위.
+// 비밀이 비어도 앱은 떠야 한다(주최 측은 빈 설정으로 띄운다). 대신 무작위 비밀을 쓰고, 값은 로그에 남기지 않는다.
+function resolveJwtSecret(): string {
+  const secret = process.env.JWT_SECRET?.trim();
+  if (secret) return secret;
+  new Logger('AuthModule').warn(
+    'JWT_SECRET이 비어 있어 임시 비밀을 만들었습니다. 재시작하면 기존 토큰은 무효가 됩니다.',
+  );
+  return randomBytes(GENERATED_JWT_SECRET_BYTES).toString('hex');
+}
+
+// 비밀·만료는 환경변수에서 읽는다(코드에 박으면 배포마다 같은 비밀이 된다).
+// 팩토리는 모듈 생성 때 한 번만 돌아 sign과 verify가 같은 비밀을 쓴다.
 function jwtOptionsFromEnv(): JwtModuleOptions {
   return {
-    secret: process.env.JWT_SECRET,
+    secret: resolveJwtSecret(),
     signOptions: {
       algorithm: 'HS256',
       expiresIn: (process.env.JWT_EXPIRES_IN ||
