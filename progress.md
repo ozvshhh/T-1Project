@@ -7,7 +7,7 @@ Agent가 서비스 저장소 루트의 `progress.md`로 복사해 이어 쓴다(
 - 실제 서비스 저장소 폴더: /Users/du_dung/Project/sumtech/T-1Project (안내 키트: ../loopthon-starter)
 - 작업 방식(2026-10-29, junjang859-boop): 기획서는 `problem` 브랜치에서 수정·커밋하고, 학생이 "메인에 반영해줘"라고 할 때만 PR로 main에 머지
 - 현재 단계 / 다음 행동(기획·2-A, problem 브랜치 팀원): 2단계 2-A 진행 중. 팀이 최신 정리본(캔버스 ①~⑥)을 최신으로 확정(2026-10-29) → canvas의 context·customer·root_problem·impact·alternatives에 "(정리본)"으로 반영(problem 브랜치). 초점이 "경험은 있는데 구조화·증명이 안 되는 첫 구직 취준생"으로 넓어짐. statement 확정·main 반영(PR #5, #6, e77f432)·화면 표시 확인 완료(2026-10-29). 다음: 근거(sources)·팀 밖 경험 → 2-B
-- 현재 단계 / 다음 행동(백엔드·2-C, tgYun783): 2단계 2-C 초안 완료(2026-10-29 밤, 학생 "일단 이렇게 하자"), PR #7로 main 반영(학생 지시). 들어간 것: solution_paths, features F1~F9, 역할 `취준생`, 플랫폼 desktop, scenarios.yaml S1~S6, README 구현 설계, 서버 NestJS·DB MongoDB. 다음: 학생이 대시보드 화면(문제 정의·흐름) 확인 → 아래 2-C 대기 6건은 답이 오면 반영 → 팀이 3단계 시작하자고 하면 03-delivery.md부터
+- 현재 단계 / 다음 행동(백엔드, tgYun783): 2-C 완료·main 반영(PR #7), API 명세(PR #11). 2026-10-29 밤 백엔드 구현 계획 docs/backend-plan.md와 역할 분리 랄프 루프 server/ralph/(명세 01~07·09, check.mjs, ralph.sh) 작성. 다음: 학생이 backend-plan 0절(결정 6건·구조 합의·AI 키) 처리 → 1단계 루프(`node server/ralph/check.mjs load 01`, `server/ralph/ralph.sh`) → PR → 제출 요건 화면 확인
 - 학생에게 확인할 내용 (한 번에 하나씩):
   - 답 받음(2026-10-29): 1 면접에 집중하는 이유 / 2 experiences E1(질문 내용·한 말·끝나고 한 일은 "그런 경험이 있다고만" 해서 비움) / 3 근본 문제·5 whys / 4 고객(회사 보류 이유, 팀 밖 사례는 "경험이 있었다고만") / 5 감정(팀원 실제 느낌) / 6 지표(이름만 두기로) / 7 현재 대안 A1~A3와 단점(정리본 ⑤⑥)
   - 2-B 때 볼 해법 메모(학생 말 그대로, 2026-10-29): "날것의 소스를 넣으면 이력서와 면접서비스를 제공", "맞춤형 면접 서비스 제공 및 날것의 본인의 스펙에 관련된 소스를 올리면 면접 서비스 제공", 차별점으로 "면접에서 삼인 삼색 보이스 페르소나, 꼬리질문 압박 인터렉션 서비스 제공"
