@@ -28,7 +28,9 @@ describe('C1-1 server skeleton', () => {
         'RELEASE_ID',
         'SEED_USER_EMAIL',
         'SEED_USER_PASSWORD',
-        'SESSION_SECRET',
+        'JWT_SECRET',
+        'PORT',
+        'API_UPSTREAM',
       ].sort(),
     );
     for (const [, value] of entries) expect(value ?? '').toBe('');

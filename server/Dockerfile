@@ -19,5 +19,5 @@ COPY --from=build /app/dist ./dist
 # /__health의 releaseId. compose/CI가 커밋 SHA를 빌드 인자로 넘기고, 없으면 dev.
 ARG RELEASE_ID=dev
 ENV RELEASE_ID=$RELEASE_ID
-EXPOSE 3000
+EXPOSE 3001
 CMD ["node","dist/main.js"]
