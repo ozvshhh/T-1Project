@@ -21,3 +21,5 @@
   남은 일: 6번 공통 레이아웃. 막힌 점 없음(시드 2·3번 문장은 mock-data 표대로 한 문장을 '높였고,' 뒤에서 나눈 두 절로 둠).
 - [6] 헤더(로그인 전·후), RequireAuth·RequireUnlocked 가드, useAiCall·AiStatus, StatusRow, StageBlock, 401 이벤트 추가, common.test.tsx 추가.
   남은 일: 7번 A 소개·B 가입·로그인(App 라우트에 가드를 붙이는 건 각 화면 작업에서). 막힌 점 없음(가드 테스트는 화면이 없어 자리 표시 라우트로 검사).
+- [7] Intro(A) 신설, AuthPage를 스펙 글자·로그인 상태 리다이렉트(원래 주소 복귀)로 정리, App 라우트 `/`·`/signup`·`/login` 추가, auth.test.tsx 추가.
+  남은 일: 8번 C 홈 잠금·목록(`/cover-letters` 라우트와 RequireAuth 연결). 막힌 점 없음(lint 경고는 기존 useLoad.ts 것).
