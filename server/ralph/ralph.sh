@@ -11,11 +11,12 @@ mkdir -p $R/logs $R/reviews $R/confirms
 VERIFY_MODEL="${VERIFY_MODEL:-opus}"; FIX_MODEL="${FIX_MODEL:-opus}"; CONFIRM_MODEL="${CONFIRM_MODEL:-opus}"
 echo "주장 ${CLAIMS}개, 최대 반복 ${MAX}"
 
-COMMON=(Read Glob Grep "Bash(ls:*)" "Bash(cat:*)" "Bash(npm run:*)" "Bash(npm test:*)" "Bash(npx jest:*)" "Bash(git status:*)" "Bash(git diff:*)" "Bash(git log:*)" "Bash(git show:*)")
-VERIFY_TOOLS=("${COMMON[@]}" "Write($R/reviews/*)" "Edit($R/reviews/*)" "Bash(docker compose:*)" "Bash(curl:*)" "Bash(sleep:*)")
-FIX_TOOLS=("${COMMON[@]}" Write Edit "Bash(npm install:*)" "Bash(npm ci:*)" "Bash(npx nest:*)" "Bash(mkdir:*)" "Bash(git add:*)" "Bash(git commit:*)")
+# npm은 저장소 루트에서 `npm --prefix server ...` 또는 `cd server && npm ...` 형태만 허용(규칙은 명령 앞부분 일치).
+COMMON=(Read Glob Grep "Bash(ls:*)" "Bash(cat:*)" "Bash(npm --prefix server:*)" "Bash(cd server && npm:*)" "Bash(npm run:*)" "Bash(npm test:*)" "Bash(npm ci:*)" "Bash(npm install:*)" "Bash(git status:*)" "Bash(git diff:*)" "Bash(git log:*)" "Bash(git show:*)")
+VERIFY_TOOLS=("${COMMON[@]}" "Edit($R/reviews/*)" "Bash(docker compose:*)" "Bash(curl:*)" "Bash(sleep:*)")
+FIX_TOOLS=("${COMMON[@]}" Write Edit "Bash(npx nest:*)" "Bash(cd server && npx:*)" "Bash(mkdir:*)" "Bash(git add:*)" "Bash(git commit:*)")
 FIX_DENY=("Edit($R/**)" "Edit(docs/**)" "Edit(frontend/**)" "Edit(e2e/**)" WebSearch WebFetch)
-CONFIRM_TOOLS=("${COMMON[@]}" "Write($R/confirms/*)" "Edit($R/confirms/*)")
+CONFIRM_TOOLS=("${COMMON[@]}" "Edit($R/confirms/*)")
 
 for i in $(seq 1 "$MAX"); do
   NEXT=$(node $R/check.mjs next)
@@ -57,6 +58,20 @@ $CLAIM
       claude -p "$PROMPT" --model "$CONFIRM_MODEL" --permission-mode default --allowedTools "${CONFIRM_TOOLS[@]}" 2>&1 | tee "$R/logs/$i-confirm-$CID.log" ;;
   esac
 
+  # 권한 거부는 도구 설정 문제다. ledger를 건드리지 않고 멈춘다(허용 규칙을 고친 뒤 다시 실행).
+  if grep -qiE "requested permissions|permission (was )?denied|denied for approval|haven.t granted" "$R/logs/$i-$ROLE-$CID.log"; then
+    echo "=== 권한 거부가 있어 멈춥니다. 로그: $R/logs/$i-$ROLE-$CID.log. ralph.sh의 허용 규칙을 고친 뒤 다시 실행하세요. ==="
+    exit 4
+  fi
+  # verify·confirm이 판정 파일을 안 썼으면 도구 문제로 보고 멈춘다(코드 실패로 세지 않음).
+  if [ "$ROLE" = verify ] && ! head -1 "$R/reviews/$CID.md" 2>/dev/null | grep -q "^VERDICT: "; then
+    echo "=== verify가 $R/reviews/$CID.md 첫 줄에 VERDICT를 쓰지 않았어요. 로그를 보고 프롬프트·권한을 고친 뒤 다시 실행하세요. ==="
+    exit 5
+  fi
+  if [ "$ROLE" = confirm ] && ! head -1 "$R/confirms/$CID-$N.md" 2>/dev/null | grep -q "^CONFIRM: "; then
+    echo "=== confirm이 $R/confirms/$CID-$N.md 첫 줄에 CONFIRM을 쓰지 않았어요. 로그를 보고 프롬프트·권한을 고친 뒤 다시 실행하세요. ==="
+    exit 5
+  fi
   # 사용량 한도·인증 오류는 작업 실패가 아니다. ledger를 건드리지 않고 멈춘다(사람이 나중에 다시 실행).
   if grep -qiE "usage limit|rate limit|limit reached|out of.*(quota|credits)|429|not logged in|authentication" "$R/logs/$i-$ROLE-$CID.log"; then
     echo "=== 사용량 한도 또는 인증 오류로 보여 멈춥니다. 로그: $R/logs/$i-$ROLE-$CID.log. 한도가 풀리면 같은 명령으로 다시 실행하세요. ==="
