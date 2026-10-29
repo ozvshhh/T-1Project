@@ -1,6 +1,6 @@
 너는 T-1Project 프론트엔드(Vite + React + TypeScript + Tailwind v4)를 만드는 중이다. 이번 실행에서는 작업 하나만 끝내고 종료한다.
 
-먼저 specs/ 아래 모든 파일, fix_plan.md, progress.md 를 읽어라. 필요하면 ../docs/api.md(서버 호출), ../docs/scenarios.yaml(E2E 시나리오), ../docs/design/DESIGN.md(스타일)를 읽어라. 기능의 정본은 ../docs/problem.yaml 의 functional_spec 이다.
+먼저 specs/ 아래 모든 파일, fix_plan.md, progress.md 를 읽어라. 필요하면 ../docs/api.md(서버 호출), ../docs/scenarios.yaml(E2E 시나리오), ../docs/design/DESIGN.md(스타일)를 읽어라. 기능의 정본은 ../docs/problem.yaml 의 functional_spec 이다. ../docs/ 는 읽기만 하고 절대 고치지 마라.
 화면 글자(버튼·메뉴·입력칸 이름)는 specs/ 에 적힌 그대로 쓰고 바꾸지 마라. E2E가 그 글자로 화면을 찾는다.
 
 1. fix_plan.md 에서 아직 체크되지 않은 작업 중 맨 위의 것 하나만 골라라.

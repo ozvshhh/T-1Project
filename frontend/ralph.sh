@@ -32,6 +32,7 @@ for i in $(seq 1 "$MAX"); do
     --model "$MODEL" \
     --effort "$EFFORT" \
     ${extra[@]+"${extra[@]}"} \
+    --add-dir ../docs \
     --permission-mode acceptEdits \
     --allowedTools "Bash(npx vitest:*)" "Bash(npx tsc:*)" "Bash(npm run:*)" "Bash(npm test:*)" "Bash(git add:*)" "Bash(git rm:*)" "Bash(git commit:*)" "Bash(git status:*)" "Bash(git diff:*)" "Bash(git log:*)" \
     2>&1 | tee "$log"
