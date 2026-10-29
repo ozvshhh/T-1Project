@@ -24,6 +24,12 @@ export const conversationStartSchema = z.object({
 });
 export type ConversationStartResult = z.infer<typeof conversationStartSchema>;
 
+// answers 응답 스키마(명세 06). 후보의 항목은 다섯 개 중 하나, 내용은 비지 않아야 한다: 하나라도 어긋나면 전체를 실패로 보고 아무것도 저장하지 않는다.
+export const conversationAnswerSchema = conversationStartSchema.extend({
+  candidates: z.array(z.object({ item: z.enum(ITEMS), text: z.string().trim().min(1) })),
+});
+export type ConversationAnswerResult = z.infer<typeof conversationAnswerSchema>;
+
 export interface ConversationInput {
   title: string;
   period: string;

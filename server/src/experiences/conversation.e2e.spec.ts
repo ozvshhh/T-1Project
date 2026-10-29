@@ -217,4 +217,214 @@ describe('Experience conversation start/get (e2e)', () => {
     await http().get(`/api/experiences/${expId}/conversation`).expect(401);
     await http().post(`/api/experiences/${expId}/conversation/start`).expect(401);
   });
+
+  // 답하기(api.md 5절, 명세 06 C6-2). 답 하나에 AI 한 번으로 다음 질문·상태·후보를 함께 받는다(R3·R4).
+  describe('conversation answers', () => {
+    const AFTER_ANSWER = {
+      situation: 'explained',
+      role: 'needs_more',
+      action: null,
+      result: null,
+      meaning: null,
+    };
+
+    interface FactBody {
+      id: string;
+      item: string;
+      text: string;
+      status: string;
+      source: string;
+      clueId: string | null;
+      origin: string;
+      createdAt: string;
+    }
+
+    interface AnswerBody {
+      answer: MessageBody;
+      question: MessageBody;
+      itemStatus: Record<string, string | null>;
+      newCandidates: FactBody[];
+    }
+
+    function answer(token: string, expId: string, body: unknown) {
+      return http()
+        .post(`/api/experiences/${expId}/conversation/answers`)
+        .set('Authorization', `Bearer ${token}`)
+        .send(body as object);
+    }
+
+    async function startedExperience(email: string): Promise<{ token: string; expId: string }> {
+      const token = await signup(email);
+      const expId = await createExperience(token);
+      fake.queue('conversation-start', { question: '그때 어떤 상황이었나요?', itemStatus: FIRST_STATUS });
+      await start(token, expId).expect(200);
+      return { token, expId };
+    }
+
+    async function experienceBody(token: string, expId: string) {
+      const res = await http().get(`/api/experiences/${expId}`).set('Authorization', `Bearer ${token}`).expect(200);
+      return (res.body as { experience: { candidates: FactBody[]; card: Record<string, FactBody[]> } }).experience;
+    }
+
+    // 대화가 없는데 답을 받으면 무엇에 대한 답인지 알 수 없다: 409로 막고 AI도 부르지 않는다(api.md 5절).
+    it('before start → 409 CONVERSATION_NOT_STARTED, no AI call, nothing saved', async () => {
+      const token = await signup('ans-notstarted@example.com');
+      const expId = await createExperience(token);
+      const res = await answer(token, expId, { text: '축제 부스를 맡았어요' }).expect(409);
+      expect((res.body as { error: { code: string } }).error.code).toBe('CONVERSATION_NOT_STARTED');
+      expect(fake.calls).toHaveLength(0);
+      expect(((await getConversation(token, expId)).body as ConversationBody).messages).toEqual([]);
+    });
+
+    // 빈 답은 AI 비용만 쓰고 기록할 내용이 없다: AI 호출 전에 400으로 막는다.
+    it('empty / blank / missing / non-string text → 400 VALIDATION field text, no AI call', async () => {
+      const { token, expId } = await startedExperience('ans-empty@example.com');
+      fake.reset();
+      for (const body of [{ text: '' }, { text: '   ' }, {}, { text: 3 }]) {
+        const res = await answer(token, expId, body).expect(400);
+        const err = (res.body as { error: { code: string; details: { field: string }[] } }).error;
+        expect(err.code).toBe('VALIDATION');
+        expect(err.details.map((d) => d.field)).toEqual(['text']);
+      }
+      expect(fake.calls).toHaveLength(0);
+      expect(((await getConversation(token, expId)).body as ConversationBody).messages).toHaveLength(1);
+    });
+
+    // 후보는 AI가 뽑았을 뿐 확인되지 않은 것이라 candidate·ai_unverified로만 쌓이고 카드에는 들어가지 않는다(C1, R4).
+    it('answer → 200 {answer, question, itemStatus, newCandidates}; messages and candidates accumulate, card stays empty', async () => {
+      const { token, expId } = await startedExperience('ans-ok@example.com');
+      fake.queue('conversation-answer', {
+        question: '그때 맡은 역할은 무엇이었나요?',
+        itemStatus: AFTER_ANSWER,
+        candidates: [{ item: 'situation', text: '축제 부스 대기 줄이 길었다' }],
+      });
+      const res = await answer(token, expId, { text: '  축제 부스 대기 줄이 너무 길었어요  ' }).expect(200);
+      const body = res.body as AnswerBody;
+      expect(Object.keys(body).sort()).toEqual(['answer', 'itemStatus', 'newCandidates', 'question']);
+      expect(body.answer).toMatchObject({ role: 'user', text: '축제 부스 대기 줄이 너무 길었어요' });
+      expect(body.answer.createdAt).toMatch(ISO);
+      expect(body.question).toMatchObject({ role: 'ai', text: '그때 맡은 역할은 무엇이었나요?' });
+      expect(body.question.createdAt).toMatch(ISO);
+      expect(Date.parse(body.answer.createdAt)).toBeLessThanOrEqual(Date.parse(body.question.createdAt));
+      expect(body.itemStatus).toEqual(AFTER_ANSWER);
+      expect(body.newCandidates).toHaveLength(1);
+      expect(body.newCandidates[0]).toMatchObject({
+        item: 'situation',
+        text: '축제 부스 대기 줄이 길었다',
+        status: 'candidate',
+        source: 'ai_unverified',
+        origin: 'conversation',
+        clueId: null,
+      });
+
+      // 입력에 방금 쓴 답이 대화 기록으로 들어가야 AI가 그 답을 보고 다음 질문을 만든다.
+      const answerCalls = () => fake.calls.filter((c) => c.task === 'conversation-answer');
+      expect(answerCalls()).toHaveLength(1);
+      expect(answerCalls()[0].user).toContain('그때 어떤 상황이었나요?');
+      expect(answerCalls()[0].user).toContain('축제 부스 대기 줄이 너무 길었어요');
+
+      const conv = (await getConversation(token, expId).expect(200)).body as ConversationBody;
+      expect(conv.messages.map((m) => m.role)).toEqual(['ai', 'user', 'ai']);
+      expect(conv.messages[1]).toEqual(body.answer);
+      expect(conv.messages[2]).toEqual(body.question);
+      expect(conv.itemStatus).toEqual(AFTER_ANSWER);
+      expect(conv.candidates).toEqual(body.newCandidates);
+
+      let exp = await experienceBody(token, expId);
+      expect(exp.candidates).toEqual(body.newCandidates);
+      expect(Object.values(exp.card).flat()).toEqual([]);
+
+      fake.queue('conversation-answer', {
+        question: '어떤 행동을 했나요?',
+        itemStatus: { ...AFTER_ANSWER, role: 'explained' },
+        candidates: [
+          { item: 'role', text: '부스 동선 담당' },
+          { item: 'action', text: '대기 번호표를 만들었다' },
+        ],
+      });
+      const second = (await answer(token, expId, { text: '저는 동선 담당이었고 번호표를 만들었어요' }).expect(200))
+        .body as AnswerBody;
+      expect(second.newCandidates).toHaveLength(2);
+      // 이전 답들도 대화 기록으로 계속 넘어가야 같은 질문을 되묻지 않는다.
+      expect(answerCalls()).toHaveLength(2);
+      expect(answerCalls()[1].user).toContain('축제 부스 대기 줄이 너무 길었어요');
+
+      exp = await experienceBody(token, expId);
+      expect(exp.candidates).toHaveLength(3);
+      expect(Object.values(exp.card).flat()).toEqual([]);
+      expect(((await getConversation(token, expId)).body as ConversationBody).messages).toHaveLength(5);
+    });
+
+    // 대화 중에 올린 단서도 다음 질문부터 반영된다(api.md 5절): 매 답마다 그 시점의 단서 전체를 넣는다.
+    it('clue added between answers → next AI input contains it', async () => {
+      const { token, expId } = await startedExperience('ans-clue@example.com');
+      fake.queue('conversation-answer', { question: 'Q2', itemStatus: AFTER_ANSWER, candidates: [] });
+      await answer(token, expId, { text: '첫 답입니다' }).expect(200);
+      expect(fake.calls[fake.calls.length - 1].user).not.toContain('새로 찾은 회의록');
+
+      await http()
+        .post(`/api/experiences/${expId}/clues`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ type: 'text', text: '새로 찾은 회의록: 번호표 도입 결정' })
+        .expect(201);
+      await fileClue(token, expId, 'hidden-name.pdf', '번호표 사진 설명');
+
+      fake.queue('conversation-answer', { question: 'Q3', itemStatus: AFTER_ANSWER, candidates: [] });
+      await answer(token, expId, { text: '두 번째 답입니다' }).expect(200);
+      const input = fake.calls[fake.calls.length - 1].user;
+      expect(input).toContain('새로 찾은 회의록: 번호표 도입 결정');
+      expect(input).toContain('번호표 사진 설명');
+      expect(input).not.toContain('hidden-name');
+      expect(input).toContain('첫 답입니다');
+      expect(input).toContain('두 번째 답입니다');
+    });
+
+    // AI가 실패하면 사용자 답도 저장하지 않아야 다시 보낼 때 대화가 겹치지 않는다(C2).
+    it('AI failure or out-of-schema reply → 502, messages/candidates/itemStatus unchanged', async () => {
+      const { token, expId } = await startedExperience('ans-fail@example.com');
+      fake.queue('conversation-answer', {
+        question: 'Q2',
+        itemStatus: AFTER_ANSWER,
+        candidates: [{ item: 'situation', text: '이미 있던 후보' }],
+      });
+      await answer(token, expId, { text: '첫 답' }).expect(200);
+      const before = (await getConversation(token, expId)).body as ConversationBody;
+
+      fake.fail('conversation-answer');
+      const res = await answer(token, expId, { text: '저장되면 안 되는 답' }).expect(502);
+      expect((res.body as { error: { code: string } }).error.code).toBe('AI_UNAVAILABLE');
+
+      // 스키마 밖 후보(없는 item·빈 text)도 실패로 처리해 반쯤 저장되지 않게 한다(AI 응답은 믿지 않는다).
+      fake.queue('conversation-answer', {
+        question: 'Q3',
+        itemStatus: AFTER_ANSWER,
+        candidates: [{ item: 'salary', text: '연봉' }],
+      });
+      await answer(token, expId, { text: '저장되면 안 되는 답' }).expect(502);
+      fake.queue('conversation-answer', {
+        question: 'Q3',
+        itemStatus: AFTER_ANSWER,
+        candidates: [{ item: 'action', text: '  ' }],
+      });
+      await answer(token, expId, { text: '저장되면 안 되는 답' }).expect(502);
+
+      const after = (await getConversation(token, expId)).body as ConversationBody;
+      expect(after.messages).toHaveLength(before.messages.length);
+      expect(after.candidates).toHaveLength(before.candidates.length);
+      expect(after.itemStatus).toEqual(before.itemStatus);
+      expect(JSON.stringify(after)).not.toContain('저장되면 안 되는 답');
+    });
+
+    // 남의 경험에는 답을 남길 수 없고 존재 여부도 새면 안 된다(R1). AI도 불리면 안 된다.
+    it("other user's experience / bad id / missing id → 404, no token → 401, no AI call", async () => {
+      const { token: owner, expId } = await startedExperience('ans-owner@example.com');
+      const other = await signup('ans-other@example.com');
+      fake.reset();
+      await answer(other, expId, { text: '남의 답' }).expect(404);
+      await answer(owner, 'not-an-id', { text: '답' }).expect(404);
+      await answer(owner, '64b7f0000000000000000000', { text: '답' }).expect(404);
+      await http().post(`/api/experiences/${expId}/conversation/answers`).send({ text: '답' }).expect(401);
+      expect(fake.calls).toHaveLength(0);
+    });
+  });
 });

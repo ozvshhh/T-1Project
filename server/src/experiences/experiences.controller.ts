@@ -18,7 +18,13 @@ import { Request, Response } from 'express';
 import { AuthUser, CurrentUser } from '../auth/current-user.decorator';
 import { ClueFileInterceptor } from './clue-file.interceptor';
 import { UploadedClueFile, validateFileClue, validateTextClue } from './clue.validation';
-import { ConversationDto, ConversationService, ConversationStartDto } from './conversation.service';
+import {
+  ConversationAnswerDto,
+  ConversationDto,
+  ConversationService,
+  ConversationStartDto,
+} from './conversation.service';
+import { validateAnswer } from './conversation.validation';
 import { ClueDto, ExperienceDto, FactDto } from './experience.dto';
 import { validateCreateExperience, validateUpdateExperience } from './experience.validation';
 import { validateCreateFact, validateUpdateFact } from './fact.validation';
@@ -111,6 +117,17 @@ export class ExperiencesController {
     @Param('id') id: string,
   ): Promise<ConversationStartDto> {
     return this.conversation.start(user.id, id);
+  }
+
+  // 답하기도 api.md 5절대로 200. 본문 검증을 소유자 조회보다 먼저 해 400 여부로 남의 경험을 떠볼 수 없게 한다.
+  @Post(':id/conversation/answers')
+  @HttpCode(HttpStatus.OK)
+  async answerConversation(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Body() body: unknown,
+  ): Promise<ConversationAnswerDto> {
+    return this.conversation.answer(user.id, id, validateAnswer(body));
   }
 
   // 사용자가 카드에 직접 쓰는 사실(api.md 6절). 형식 검증을 소유자 조회보다 먼저 해 400 여부로 남의 경험을 떠볼 수 없게 한다.
