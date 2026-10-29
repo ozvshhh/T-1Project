@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types, UpdateQuery } from 'mongoose';
 import { AiService } from '../ai/ai.service';
+import { Check } from '../checks/check.schema';
 import { assertOwner, parseObjectIdOr404 } from '../common/ownership';
 import { ExperienceDto } from '../experiences/experience.dto';
 import { Experience } from '../experiences/experience.schema';
@@ -35,6 +36,8 @@ export class CoverLettersService {
     @InjectModel(CoverLetter.name) private readonly coverLetters: Model<CoverLetter>,
     @InjectModel(Experience.name) private readonly experiences: Model<Experience>,
     @InjectModel(Fact.name) private readonly facts: Model<Fact>,
+    // 자소서가 바뀌면 기존 점검을 오래됨으로 표시하려고 점검 모델을 직접 쓴다(ChecksModule과 순환 import를 피한다).
+    @InjectModel(Check.name) private readonly checks: Model<Check>,
     private readonly ai: AiService,
     // 근거 카드를 경험 상세와 같은 모양으로 만들려고 경험 모듈의 조립을 그대로 쓴다(모양이 두 곳에서 갈라지지 않게).
     private readonly experienceCards: ExperiencesService,
@@ -334,7 +337,10 @@ export class CoverLettersService {
     const updated = await this.coverLetters
       .findOneAndUpdate(filter, change, { returnDocument: 'after' })
       .lean<CoverLetterRecord>();
-    return assertOwner(updated, userId);
+    const changed = assertOwner(updated, userId);
+    // 글이 바뀌면 기존 점검의 문장이 지금 글과 어긋난다: 그 자소서의 점검을 모두 오래됨으로 표시한다(api.md 9절).
+    await this.checks.updateMany({ coverLetterId: owned._id, userId: owned.userId }, { $set: { stale: true } });
+    return changed;
   }
 
   // 남의 것·없는 것·잘못된 id 모두 같은 404(R1).

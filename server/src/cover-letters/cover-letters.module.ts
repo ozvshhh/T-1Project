@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { AiModule } from '../ai/ai.module';
+import { Check, CheckSchema } from '../checks/check.schema';
 import { Experience, ExperienceSchema } from '../experiences/experience.schema';
 import { ExperiencesModule } from '../experiences/experiences.module';
 import { Fact, FactSchema } from '../experiences/fact.schema';
@@ -16,6 +17,8 @@ import { CoverLettersService } from './cover-letters.service';
       // 추천 후보 집합(확정 사실이 있는 내 경험)을 만들려고 경험·사실을 읽는다.
       { name: Experience.name, schema: ExperienceSchema },
       { name: Fact.name, schema: FactSchema },
+      // 자소서가 바뀌면 그 자소서의 기존 점검을 오래됨으로 표시한다(명세 08).
+      { name: Check.name, schema: CheckSchema },
     ]),
     // 추천이 AI를 부른다. 테스트는 AiService를 FakeAiService로 바꿔 끼운다(실제 Gateway 호출 금지).
     AiModule,

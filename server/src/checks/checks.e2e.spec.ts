@@ -290,4 +290,222 @@ describe('C8-1 /api/cover-letters/:id/checks create·get·list', () => {
     const after = await http().get(`/api/cover-letters/${id}`).set(auth(a.token)).expect(200);
     expect(after.body).toEqual(before.body);
   });
+
+  // 문장별 근거 묻기(R10)는 start로 시작한다. 자소서가 바뀐 뒤 옛 점검으로 이어 가면 지금 글과 다른 문장을 해명하게 된다.
+  describe('C8-2 sentence start and stale checks', () => {
+    const SENTENCE = '저는 축제 운영팀장으로 방문객을 30% 늘렸습니다.';
+    const OTHER = '팀원들과 매주 회의를 했습니다.';
+
+    const start = (token: string, checkId: string, sentenceId: string) =>
+      http().post(`/api/checks/${checkId}/sentences/${sentenceId}/start`).set(auth(token));
+    const answers = (token: string, checkId: string, sentenceId: string) =>
+      http().post(`/api/checks/${checkId}/sentences/${sentenceId}/answers`).set(auth(token)).send({ text: '답' });
+
+    async function pastedCheck(token: string): Promise<{ id: string; check: CheckBody }> {
+      const id = await pasted(token);
+      fake.queue('check-sentences', {
+        sentences: [
+          { text: SENTENCE, coverLetterItemId: null },
+          { text: OTHER, coverLetterItemId: null },
+        ],
+      });
+      return { id, check: await createOk(token, id) };
+    }
+
+    const expectStale = (res: request.Response) => {
+      expect(res.status).toBe(409);
+      expect((res.body as ErrorBody).error.code).toBe('CHECK_STALE');
+    };
+
+    afterEach(async () => {
+      await connection.collection('experiences').deleteMany({});
+      await connection.collection('facts').deleteMany({});
+    });
+
+    // 첫 질문이 turn으로 남아야 새로고침 뒤에도 같은 질문에 답할 수 있다(R11).
+    it('start appends the first question as a turn and marks the sentence in_progress', async () => {
+      const { check } = await pastedCheck(a.token);
+      const target = check.sentences[0];
+      fake.queue('check-question', { question: 'Q1' });
+
+      const res = await start(a.token, check.id, target.id);
+
+      expect(res.status).toBe(200);
+      expect(Object.keys(res.body as object)).toEqual(['sentence']);
+      const sentence = (res.body as { sentence: SentenceBody }).sentence;
+      expect(sentence).toEqual({
+        id: target.id,
+        text: SENTENCE,
+        coverLetterItemId: null,
+        status: 'in_progress',
+        turns: [{ question: 'Q1', answer: null, judge: [] }],
+        followUpsLeft: 3,
+      });
+      // AI에는 고른 문장과 그 문맥(원문)이 들어가야 맥락에 맞는 질문이 나온다.
+      const call = fake.calls.find((c) => c.task === 'check-question');
+      expect(call?.user).toContain(SENTENCE);
+      expect(call?.user).toContain(BODY);
+
+      const saved = (await getCheck(a.token, check.id).expect(200)).body as { check: CheckBody };
+      expect(saved.check.sentences[0]).toEqual(sentence);
+      // 다른 문장은 시작하지 않았으므로 그대로다(서버가 자동으로 넘기지 않는다).
+      expect(saved.check.sentences[1].status).toBe('pending');
+    });
+
+    // 같은 문장을 다시 시작해도 질문이 겹치거나 AI 비용이 더 들면 안 된다.
+    it('start on an already started sentence returns it unchanged without calling the AI', async () => {
+      const { check } = await pastedCheck(a.token);
+      const target = check.sentences[0];
+      fake.queue('check-question', { question: 'Q1' });
+      const first = (await start(a.token, check.id, target.id).expect(200)).body as { sentence: SentenceBody };
+      const callsBefore = fake.calls.length;
+
+      const again = await start(a.token, check.id, target.id);
+
+      expect(again.status).toBe(200);
+      expect(again.body).toEqual(first);
+      expect(fake.calls).toHaveLength(callsBefore);
+    });
+
+    // AI가 실패했는데 문장이 in_progress가 되면 답할 질문 없이 막힌다(C2): 502이고 문장은 그대로다.
+    it('start returns 502 and leaves the sentence pending with no turns when the AI fails or answers off-schema', async () => {
+      const { check } = await pastedCheck(a.token);
+      const target = check.sentences[0];
+      fake.fail('check-question');
+      const failed = await start(a.token, check.id, target.id);
+      expect(failed.status).toBe(502);
+      expect((failed.body as ErrorBody).error.code).toBe('AI_UNAVAILABLE');
+
+      fake.queue('check-question', { question: '' });
+      expect((await start(a.token, check.id, target.id)).status).toBe(502);
+
+      const saved = (await getCheck(a.token, check.id).expect(200)).body as { check: CheckBody };
+      expect(saved.check.sentences[0]).toEqual(target);
+    });
+
+    // 남의 점검·문장은 있는지조차 알 수 없어야 한다(R1): 같은 404이고 AI도 부르지 않는다.
+    it('start returns 404 for others’ checks and missing or malformed ids, 401 without a token', async () => {
+      const { check } = await pastedCheck(a.token);
+      const target = check.sentences[0];
+      fake.reset();
+
+      expectNotFound(await start(b.token, check.id, target.id));
+      expectNotFound(await start(a.token, new Types.ObjectId().toHexString(), target.id));
+      expectNotFound(await start(a.token, 'not-an-id', target.id));
+      expectNotFound(await start(a.token, check.id, new Types.ObjectId().toHexString()));
+      expectNotFound(await start(a.token, check.id, 'not-an-id'));
+      expect(fake.calls).toEqual([]);
+
+      expect((await http().post(`/api/checks/${check.id}/sentences/${target.id}/start`)).status).toBe(401);
+    });
+
+    // 생성한 자소서는 문장이 든 문항의 질문·응답이 문맥이다(붙여넣은 본문이 없다).
+    it('start on a generated letter sends the containing item as context', async () => {
+      const { id, itemIds } = await generated(a.token);
+      const text = '저는 분석 동아리에서 리포트 10건을 썼습니다.';
+      await setAnswer(a.token, id, itemIds[0], text);
+      fake.queue('check-sentences', { sentences: [{ text, coverLetterItemId: itemIds[0] }] });
+      const check = await createOk(a.token, id);
+      fake.queue('check-question', { question: 'Q1' });
+
+      const res = await start(a.token, check.id, check.sentences[0].id).expect(200);
+
+      expect((res.body as { sentence: SentenceBody }).sentence.coverLetterItemId).toBe(itemIds[0]);
+      const call = fake.calls.find((c) => c.task === 'check-question');
+      expect(call?.user).toContain('지원 동기');
+      expect(call?.user).toContain(text);
+    });
+
+    // 자소서를 바꾸는 세 API 어느 것이든 그 자소서의 점검을 "모두" 오래됨으로 만들어야 하고, 다른 자소서의 점검은 그대로다.
+    it('PATCH cover letter marks every existing check of that letter stale and leaves other letters alone', async () => {
+      const { id, check: first } = await pastedCheck(a.token);
+      fake.queue('check-sentences', { sentences: [] });
+      const second = await createOk(a.token, id);
+      const { id: otherId, check: other } = await pastedCheck(a.token);
+
+      await http().patch(`/api/cover-letters/${id}`).set(auth(a.token)).send({ title: '새 제목' }).expect(200);
+
+      const list = (await listChecks(a.token, id).expect(200)).body as { checks: CheckBody[] };
+      expect(list.checks.map((c) => [c.id, c.stale])).toEqual([
+        [second.id, true],
+        [first.id, true],
+      ]);
+      const others = (await listChecks(a.token, otherId).expect(200)).body as { checks: CheckBody[] };
+      expect(others.checks.map((c) => [c.id, c.stale])).toEqual([[other.id, false]]);
+    });
+
+    it('PATCH item answer marks the letter’s existing checks stale', async () => {
+      const { id, itemIds } = await generated(a.token);
+      await setAnswer(a.token, id, itemIds[0], '저는 분석 동아리에서 리포트 10건을 썼습니다.');
+      fake.queue('check-sentences', { sentences: [] }, { sentences: [] });
+      await createOk(a.token, id);
+      await createOk(a.token, id);
+
+      await setAnswer(a.token, id, itemIds[0], '고친 응답입니다.');
+
+      const list = (await listChecks(a.token, id).expect(200)).body as { checks: CheckBody[] };
+      expect(list.checks).toHaveLength(2);
+      expect(list.checks.every((c) => c.stale)).toBe(true);
+    });
+
+    it('POST item answer (generation) marks the letter’s existing checks stale', async () => {
+      const { id, itemIds } = await generated(a.token);
+      const now = new Date();
+      const exp = await connection.collection('experiences').insertOne({
+        userId: new Types.ObjectId(a.userId),
+        title: '축제 운영',
+        period: '2025',
+        itemStatus: { situation: null, role: null, action: null, result: null, meaning: null },
+        createdAt: now,
+        updatedAt: now,
+      });
+      await connection.collection('facts').insertOne({
+        experienceId: exp.insertedId,
+        userId: new Types.ObjectId(a.userId),
+        item: 'action',
+        text: '부스 동선을 다시 짰다',
+        status: 'confirmed',
+        source: 'said',
+        clueId: null,
+        origin: 'manual',
+        createdAt: now,
+      });
+      await http()
+        .put(`/api/cover-letters/${id}/items/${itemIds[1]}/experiences`)
+        .set(auth(a.token))
+        .send({ experienceIds: [String(exp.insertedId)] })
+        .expect(200);
+      fake.queue('check-sentences', { sentences: [] }, { sentences: [] });
+      await createOk(a.token, id);
+      await createOk(a.token, id);
+      fake.queue('cover-letter-answer', { answer: '생성된 응답' });
+
+      await http().post(`/api/cover-letters/${id}/items/${itemIds[1]}/answer`).set(auth(a.token)).expect(200);
+
+      const list = (await listChecks(a.token, id).expect(200)).body as { checks: CheckBody[] };
+      expect(list.checks).toHaveLength(2);
+      expect(list.checks.every((c) => c.stale)).toBe(true);
+    });
+
+    // 오래된 점검은 볼 수만 있다(학생 답 2026-10-30): start·answers는 AI 없이 409 CHECK_STALE, 조회는 200.
+    it('start and answers on a stale check return 409 CHECK_STALE without calling the AI, while GET still works', async () => {
+      const { id, check } = await pastedCheck(a.token);
+      fake.queue('check-question', { question: 'Q1' });
+      await start(a.token, check.id, check.sentences[0].id).expect(200);
+      await http().patch(`/api/cover-letters/${id}`).set(auth(a.token)).send({ title: '새 제목' }).expect(200);
+      fake.reset();
+
+      expectStale(await start(a.token, check.id, check.sentences[1].id));
+      expectStale(await start(a.token, check.id, check.sentences[0].id));
+      expectStale(await answers(a.token, check.id, check.sentences[0].id));
+      expect(fake.calls).toEqual([]);
+
+      const saved = (await getCheck(a.token, check.id).expect(200)).body as { check: CheckBody };
+      expect(saved.check.stale).toBe(true);
+      expect(saved.check.sentences[1].status).toBe('pending');
+      // 남의 오래된 점검은 409가 아니라 404여야 점검이 있다는 사실이 새지 않는다(R1).
+      expectNotFound(await start(b.token, check.id, check.sentences[1].id));
+      expectNotFound(await answers(b.token, check.id, check.sentences[0].id));
+    });
+  });
 });
