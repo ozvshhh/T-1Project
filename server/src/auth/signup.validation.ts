@@ -6,7 +6,7 @@ export interface SignupInput {
   password: string;
 }
 
-interface FieldError {
+export interface FieldError {
   field: 'email' | 'password';
   reason: string;
 }
@@ -14,12 +14,27 @@ interface FieldError {
 // 로컬@도메인.최상위 형태만 본다. 실제 존재 여부는 확인하지 않는다.
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+export function asObject(body: unknown): Record<string, unknown> {
+  return typeof body === 'object' && body !== null ? (body as Record<string, unknown>) : {};
+}
+
+// 가입·로그인·시드가 같은 규칙으로 정규화해야 대소문자·공백만 다른 이메일이 같은 계정이 된다.
+export function normalizeEmail(value: unknown): string {
+  return typeof value === 'string' ? value.trim().toLowerCase() : '';
+}
+
+export function throwValidation(details: FieldError[]): void {
+  if (details.length > 0) {
+    throw new BadRequestException({ code: 'VALIDATION', message: '입력값을 확인해 주세요.', details });
+  }
+}
+
 // 프런트가 칸별로 오류를 보여 주도록 400 VALIDATION에 field·reason을 모두 담는다(api.md 1절).
 export function validateSignup(body: unknown): SignupInput {
-  const obj = typeof body === 'object' && body !== null ? (body as Record<string, unknown>) : {};
+  const obj = asObject(body);
   const details: FieldError[] = [];
 
-  const email = typeof obj.email === 'string' ? obj.email.trim().toLowerCase() : '';
+  const email = normalizeEmail(obj.email);
   if (typeof obj.email !== 'string' || email === '') {
     details.push({ field: 'email', reason: '이메일을 입력해 주세요.' });
   } else if (!EMAIL_PATTERN.test(email)) {
@@ -36,8 +51,6 @@ export function validateSignup(body: unknown): SignupInput {
     });
   }
 
-  if (details.length > 0) {
-    throw new BadRequestException({ code: 'VALIDATION', message: '입력값을 확인해 주세요.', details });
-  }
+  throwValidation(details);
   return { email, password };
 }
