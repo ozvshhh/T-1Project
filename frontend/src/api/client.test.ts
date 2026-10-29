@@ -28,7 +28,7 @@ describe('api client', () => {
   })
 
   it('로그인하면 받은 토큰을 저장한다', async () => {
-    await api.login('seed@t1.test', 'seedpass1234')
+    await api.login('seeker@example.com', 'loopthon-2026')
     expect(getToken()).toMatch(/^mock-/)
   })
 })

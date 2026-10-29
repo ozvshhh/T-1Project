@@ -13,3 +13,5 @@
   이 테스트는 3번 작업이 이름으로 고치라고 적은 파일이 아니라 고치지 않음. 해결: fix_plan 3번에 "client.test.ts의 로그인 계정을 시드 계정으로 바꾼다"를 더하거나 사람이 직접 고친 뒤 3번부터 다시 실행.
 - [3] 다시 실행했지만 막힘 그대로(fix_plan 3번에 client.test.ts 수정 지시가 없고, 테스트는 여전히 `seed@t1.test`로 로그인). 구현하지 않고 중단.
 - [3] 세 번째 실행도 같은 이유로 중단(fix_plan 3번·client.test.ts 모두 그대로). 사람이 fix_plan 3번에 client.test.ts 로그인 계정 수정을 적거나 직접 고쳐야 진행 가능.
+- [3] 목 db를 api.md 모양·mock-data 시드(seeker 계정, 경험 2개, 자소서 1개)로 다시 쓰고 계정·경험·단서·대화·사실 확정/직접 추가 경로 추가, client.test.ts 로그인 계정 교체, handlers.test.ts 추가.
+  남은 일: 4번 목 API ② 자소서(db.coverLetters 시드는 이미 있음). 막힌 점 없음(setup.ts server export·render 토큰 도우미는 2번에서 이미 됨, prettier는 승인 필요라 18번에서).
