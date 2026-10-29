@@ -128,7 +128,9 @@ cd server && npm run check
 | `DATABASE_URL` | DB 연결 주소 | docker-compose·배포 |
 | `SEED_USER_EMAIL` / `SEED_USER_PASSWORD` | 로컬 docker 시드 계정 | docker-compose |
 | `AI_GATEWAY_API_KEY` | AI Gateway 키 (필요할 때만) | 배포 환경변수·GitHub Secrets |
-| `SESSION_SECRET` | 세션 쿠키 서명 키 | docker-compose(로컬 전용 값)·배포 환경변수 |
+| `JWT_SECRET` | 로그인 토큰(JWT) 서명 키 | docker-compose(로컬 전용 값)·배포 환경변수 |
+| `PORT` | 서버(NestJS) 포트, 기본 3001 (3000은 nginx) | 보통 비워 둠 |
+| `API_UPSTREAM` | nginx가 `/api/`·`/__health`를 넘길 서버 주소. compose 기본 `http://server:3001`, Lightsail `http://localhost:3001` | 루트 Dockerfile 기본값·Lightsail 배포 |
 
 변수 이름 목록은 `.env.example`에 있습니다.
 

@@ -23,8 +23,13 @@ describe('C1-8 README.md', () => {
     expect(body).toContain('npm run check');
   });
 
-  it('환경변수 table lists SESSION_SECRET', () => {
-    expect(section(readme, '## 환경변수')).toMatch(/^\| `SESSION_SECRET` \|/m);
+  // 명세 02: 세션 쿠키 대신 JWT, 서버 포트와 nginx 넘길 주소가 환경변수로 바뀐다.
+  it('환경변수 table lists JWT_SECRET, PORT, API_UPSTREAM and not SESSION_SECRET', () => {
+    const table = section(readme, '## 환경변수');
+    for (const name of ['JWT_SECRET', 'PORT', 'API_UPSTREAM']) {
+      expect(table).toMatch(new RegExp(`^\\| \`${name}\` \\|`, 'm'));
+    }
+    expect(table).not.toContain('SESSION_SECRET');
   });
 });
 
