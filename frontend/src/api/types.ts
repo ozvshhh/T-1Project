@@ -1,106 +1,85 @@
-// docs/api.md 응답 형태. 서버 명세가 바뀌면 이 파일부터 고친다.
+// docs/api.md 2절 데이터 모양. 서버 명세가 바뀌면 이 파일부터 고친다.
 
-export type User = { id: string; email: string; role: string; createdAt: string }
+export type Item = 'situation' | 'role' | 'action' | 'result' | 'meaning'
+export type ItemStatus = 'explained' | 'needs_more' | 'unknown' | null
+export type ItemStatusMap = Record<Item, ItemStatus>
+export type FactSource = 'said' | 'clue'
 
-export type ResumeTemplateItem = { key: string; label: string }
-export type ResumeItem = { key: string; label: string; content: string }
-export type Resume = { id: string; items: ResumeItem[]; updatedAt: string }
+export type Fact = {
+  id: string
+  item: Item
+  text: string
+  status: 'candidate' | 'confirmed'
+  source: 'said' | 'clue' | 'ai_unverified'
+  clueId: string | null
+  origin: 'conversation' | 'check' | 'manual'
+  createdAt: string
+}
 
-export type CoverLetterSource = 'generated' | 'uploaded'
-export type CoverLetterSummary = {
+export type Clue = {
+  id: string
+  type: 'photo' | 'award' | 'document' | 'text'
+  description: string | null
+  text: string | null
+  fileName: string | null
+  createdAt: string
+}
+
+export type Experience = {
   id: string
   title: string
-  source: CoverLetterSource
+  period: string
+  clues: Clue[]
+  itemStatus: ItemStatusMap
+  card: Record<Item, Fact[]>
+  candidates: Fact[]
   createdAt: string
   updatedAt: string
 }
-export type CoverLetter = CoverLetterSummary & {
-  body: string
-  resumeSnapshot: { items: ResumeItem[] } | null
-}
 
-export type Interviewer = 'practical' | 'executive'
-export type EndReason = 'user_end' | 'question_limit' | 'time_limit' | 'all_done'
-export type CheckState = 'explained' | 'needs_more' | 'unknown'
+export type Message = { role: 'ai' | 'user'; text: string; createdAt: string }
 
-export type MainQuestion = {
+export type CoverLetterItem = {
   id: string
-  interviewer: Interviewer
-  order: number
-  purpose: string
-  basisSentence: string
-  text: string
+  question: string
+  recommendations: { experienceId: string; reason: string }[]
+  selectedExperienceIds: string[]
+  answer: string | null
+  usedExperienceIds: string[]
+  answerEdited: boolean
 }
 
-export type Question = {
+export type CoverLetter = {
   id: string
-  kind: 'main' | 'follow_up'
-  mainQuestionId: string
-  interviewer: Interviewer
-  interviewerLabel: string
-  purpose: string
-  text: string
-  askedAt: string
+  kind: 'pasted' | 'generated'
+  title: string | null
+  body: string | null
+  target: { preferred: string; talent: string } | null
+  items: CoverLetterItem[]
+  createdAt: string
+  updatedAt: string
 }
 
-export type Answer = {
+export type SentenceStatus = 'pending' | 'in_progress' | 'explained' | 'needs_more' | 'unknown'
+export type JudgeResult = { id: 'J1' | 'J2' | 'J3' | 'J4'; result: 'met' | 'missing' }
+
+export type CheckSentence = {
   id: string
   text: string
-  inputMode: 'voice' | 'text'
-  transcriptRaw?: string
-  answeredAt: string
+  coverLetterItemId: string | null
+  status: SentenceStatus
+  turns: { question: string; answer: string | null; judge: JudgeResult[] }[]
+  followUpsLeft: number
 }
 
-export type Turn = {
-  question: Question
-  answer: Answer | null
-  skipped: boolean
-  checkState: CheckState | null
-}
-
-export type InterviewSession = {
+export type Check = {
   id: string
   coverLetterId: string
-  coverLetterSnapshot: { title: string; body: string }
-  status: 'in_progress' | 'finished'
-  startedAt: string
-  finishedAt: string | null
-  endReason: EndReason | null
-  usedFallbackQuestions: boolean
-  limits: { maxQuestions: number; maxMinutes: number; maxFollowUpsPerMain: number }
-  mainQuestions: MainQuestion[]
-  turns: Turn[]
-  currentQuestion: Question | null
+  stale: boolean
+  sentences: CheckSentence[]
+  candidates: (Fact & { experienceId: string | null })[]
+  createdAt: string
 }
 
-export type InterviewSummary = {
-  id: string
-  coverLetterTitle: string
-  status: 'in_progress' | 'finished'
-  startedAt: string
-  finishedAt: string | null
-  endReason: EndReason | null
-}
-
-export type NextAction = { action: 'follow_up' | 'next_main' | 'finished'; reason?: string }
-
-export type Suggestion = {
-  id: string
-  original: string
-  proposed: string
-  why: string
-  status: 'pending' | 'accepted' | 'rejected'
-}
-
-export type Result = {
-  interviewId: string
-  transcript: Turn[]
-  clarifiedExperiences: {
-    field: 'role' | 'reason' | 'result'
-    text: string
-    basisAnswerId: string
-  }[]
-  openItems: { text: string; basisQuestionId: string }[]
-  suggestions: Suggestion[]
-  resultStatus?: 'complete' | 'partial'
-}
+export type User = { id: string; email: string }
+export type AuthResult = { token: string; user: User }

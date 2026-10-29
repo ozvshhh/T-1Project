@@ -2,14 +2,9 @@ import { screen } from '@testing-library/react'
 import { renderApp } from '@/test/render'
 
 describe('App routing', () => {
-  it('홈 화면을 보여준다', async () => {
-    renderApp('/')
-    expect(await screen.findByRole('heading', { name: 'T-1Project' })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: '회원가입' })).toBeInTheDocument()
-  })
-
-  it('없는 경로에서 404 화면을 보여준다', () => {
+  it('없는 주소에서 안내와 홈으로 버튼을 보여준다', () => {
     renderApp('/nope')
-    expect(screen.getByText('페이지를 찾을 수 없어요')).toBeInTheDocument()
+    expect(screen.getByText('없는 페이지예요')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: '홈으로' })).toBeInTheDocument()
   })
 })
