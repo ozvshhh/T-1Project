@@ -1,33 +1,34 @@
 import { Route, Routes } from 'react-router-dom'
+import { RequireAuth, RequireUnlocked } from '@/components/guards'
 import Layout from '@/components/Layout'
+import CoverLetterNew from '@/pages/CoverLetterNew'
+import CoverLetterPaste from '@/pages/CoverLetterPaste'
 import AuthPage from '@/pages/AuthPage'
-import CoverLetterDetail from '@/pages/cover-letters/CoverLetterDetail'
-import CoverLetterNew from '@/pages/cover-letters/CoverLetterNew'
-import CoverLetters from '@/pages/cover-letters/CoverLetters'
+import ExperienceDetail from '@/pages/ExperienceDetail'
+import ExperienceNew from '@/pages/ExperienceNew'
+import Experiences from '@/pages/Experiences'
 import Home from '@/pages/Home'
-import InterviewResult from '@/pages/interview/InterviewResult'
-import Interviews from '@/pages/interview/Interviews'
-import InterviewSession from '@/pages/interview/InterviewSession'
-import InterviewStart from '@/pages/interview/InterviewStart'
+import Intro from '@/pages/Intro'
 import NotFound from '@/pages/NotFound'
-import Resume from '@/pages/Resume'
 
-// 경로는 docs/develope/screen-spec.md 0절. 로그인 가드는 공통 기획이 나오면 붙인다.
+// 화면은 specs/ 순서대로 하나씩 추가한다.
 export default function App() {
   return (
     <Routes>
       <Route element={<Layout />}>
-        <Route path="/" element={<Home />} />
+        <Route path="/" element={<Intro />} />
         <Route path="/signup" element={<AuthPage mode="signup" />} />
         <Route path="/login" element={<AuthPage mode="login" />} />
-        <Route path="/resume" element={<Resume />} />
-        <Route path="/cover-letters" element={<CoverLetters />} />
-        <Route path="/cover-letters/new" element={<CoverLetterNew />} />
-        <Route path="/cover-letters/:id" element={<CoverLetterDetail />} />
-        <Route path="/interview" element={<InterviewStart />} />
-        <Route path="/interviews" element={<Interviews />} />
-        <Route path="/interviews/:id" element={<InterviewSession />} />
-        <Route path="/interviews/:id/result" element={<InterviewResult />} />
+        <Route element={<RequireAuth />}>
+          <Route path="/cover-letters" element={<Home />} />
+          <Route path="/experiences" element={<Experiences />} />
+          <Route path="/experiences/new" element={<ExperienceNew />} />
+          <Route path="/experiences/:id" element={<ExperienceDetail />} />
+          <Route element={<RequireUnlocked />}>
+            <Route path="/cover-letters/paste" element={<CoverLetterPaste />} />
+            <Route path="/cover-letters/new" element={<CoverLetterNew />} />
+          </Route>
+        </Route>
         <Route path="*" element={<NotFound />} />
       </Route>
     </Routes>

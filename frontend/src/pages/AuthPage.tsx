@@ -1,13 +1,14 @@
 import { useState, type FormEvent } from 'react'
-import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { Link, Navigate, useLocation } from 'react-router-dom'
 import { api, ApiError } from '@/api/client'
 import { useAuth } from '@/auth/context'
+import { StageBlock } from '@/components/StageBlock'
 
 type Mode = 'signup' | 'login'
 
 const COPY = {
   signup: {
-    title: '회원가입',
+    title: '가입하기',
     submit: '가입하기',
     switchText: '이미 계정이 있나요?',
     switchLink: '로그인',
@@ -17,49 +18,46 @@ const COPY = {
     title: '로그인',
     submit: '로그인',
     switchText: '처음이신가요?',
-    switchLink: '회원가입',
+    switchLink: '가입하기',
     switchTo: '/signup',
   },
 } as const
 
 export default function AuthPage({ mode }: { mode: Mode }) {
   const copy = COPY[mode]
-  const { setUser } = useAuth()
-  const navigate = useNavigate()
+  const { user, setUser } = useAuth()
   const location = useLocation()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
+  // 로그인 상태면(가입·로그인 직후 포함) 원래 가려던 곳으로, 없으면 자소서 목록으로.
+  if (user) {
+    const from = (location.state as { from?: string } | null)?.from
+    return <Navigate to={from ?? '/cover-letters'} replace />
+  }
+
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
     setError(null)
-    if (mode === 'signup' && password.length < 8) {
-      setError('비밀번호는 8자 이상이어야 해요.')
-      return
-    }
     setBusy(true)
     try {
       const res =
         mode === 'signup' ? await api.signup(email, password) : await api.login(email, password)
       setUser(res.user)
-      // 가입·로그인 직후 원래 가려던 곳으로, 없으면 '내 이력서'로.
-      const from = (location.state as { from?: string } | null)?.from
-      navigate(from ?? '/resume', { replace: true })
     } catch (err) {
       setError(err instanceof ApiError ? err.message : '요청을 처리하지 못했어요.')
-    } finally {
       setBusy(false)
     }
   }
 
   return (
     <main className="wrap grid gap-4 pt-12 md:grid-cols-[1fr_minmax(360px,480px)]">
-      <section className="block-card bg-lime justify-between md:min-h-[480px]">
-        <p className="label">01 이력서부터 시작해요</p>
+      <StageBlock stage="experience" className="justify-between md:min-h-[480px]">
+        <p className="label">계정</p>
         <h1 className="h1">{copy.title}</h1>
-      </section>
+      </StageBlock>
 
       <form onSubmit={onSubmit} noValidate className="flex flex-col gap-5 self-center py-6">
         <div>
@@ -89,7 +87,6 @@ export default function AuthPage({ mode }: { mode: Mode }) {
             onChange={(e) => setPassword(e.target.value)}
             required
           />
-          {mode === 'signup' && <p className="mt-2 text-[13px]">8자 이상</p>}
           {error && (
             <p role="alert" className="field-error">
               {error}

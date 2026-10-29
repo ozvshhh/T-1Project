@@ -41,6 +41,12 @@ describe('C1-4 server/Dockerfile', () => {
     expect(final.indexOf('ENV RELEASE_ID=$RELEASE_ID')).toBeGreaterThan(argIdx);
   });
 
+  // 3000은 nginx(app)가 쓰므로 서버는 3001이다. Lightsail에서 두 컨테이너가 localhost를 함께 써도 겹치지 않는다(C2-1).
+  it('exposes 3001', () => {
+    expect(lines).toContain('EXPOSE 3001');
+    expect(lines).not.toContain('EXPOSE 3000');
+  });
+
   // 시작 명령에 설치·빌드가 섞이면 기동이 느려져 2분 제한을 넘길 수 있다.
   it('starts with CMD ["node","dist/main.js"] only', () => {
     const cmds = lines.filter((line) => line.startsWith('CMD') || line.startsWith('ENTRYPOINT'));
