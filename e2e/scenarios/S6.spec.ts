@@ -41,10 +41,15 @@ test("S6 취준생이 붙여넣은 자소서를 제출 전에 점검한다", asy
 
   // expected: 점검할 주장 문장 목록이 있고, 방금 낸 답이 기록에 붙는다
   await expect(page.getByText(answer)).toBeVisible({ timeout: AI_WAIT })
-  // 그 문장에 다음 질문이 보이거나 상태 글자가 보인다
-  await expect(
-    page.getByText(/설명됨|추가 확인 필요|모름·경험 없음/).first(),
-  ).toBeVisible({ timeout: AI_WAIT })
+  // 그 문장에 다음 질문이 보이거나 상태 글자가 보인다. 실제 AI가 추가 질문을 하면 상태 글자 없이
+  // 「질문과 답」 목록에 두 번째 질문이 붙으므로 둘 중 하나를 기다린다.
+  const nextQuestion = page
+    .getByRole("region", { name: "현재 문장" })
+    .getByRole("list", { name: "질문과 답" })
+    .locator(":scope > li")
+    .nth(1)
+  const statusText = page.getByText(/설명됨|추가 확인 필요|모름·경험 없음/).first()
+  await expect(nextQuestion.or(statusText).first()).toBeVisible({ timeout: AI_WAIT })
   // 점수는 어디에도 보이지 않는다
   await expect(page.getByText(/점수/)).toHaveCount(0)
   await expect(page.getByText(/\d+\s*\/\s*100/)).toHaveCount(0)
