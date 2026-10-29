@@ -15,11 +15,18 @@ export async function createApp(rootModule: Type<unknown> = AppModule): Promise<
   return app;
 }
 
-// 컨테이너 안에서는 0.0.0.0:3000에 붙어야 compose의 다른 서비스(nginx)가 접근할 수 있다.
+// 3000은 nginx(app)가 쓴다. Lightsail에서는 두 컨테이너가 localhost를 함께 쓰므로 서버는 다른 포트여야 겹치지 않는다.
+export const DEFAULT_PORT = 3001;
+export function resolvePort(env: NodeJS.ProcessEnv = process.env): number {
+  const port = Number(env.PORT);
+  return Number.isInteger(port) && port > 0 ? port : DEFAULT_PORT;
+}
+
+// 0.0.0.0에 붙어야 nginx가 compose(server:3001)·Lightsail(localhost:3001) 양쪽에서 접근할 수 있다.
 // 운영 기동은 ServerModule로 DATABASE_URL에 연결하고 시드 사용자를 보장한다.
 async function bootstrap(): Promise<void> {
   const app = await createApp(ServerModule);
-  await app.listen(3000, '0.0.0.0');
+  await app.listen(resolvePort(), '0.0.0.0');
 }
 
 if (require.main === module) {
