@@ -98,7 +98,27 @@ SUMTECH 2026 루프톤 팀 서비스 저장소입니다. 주제: AI 에이전트
 
 ## 설치·실행
 
-3단계에서 앱 구성이 정해지면 여기에 설치·빌드·실행 방법과 환경변수 표를 적습니다.
+Node 22와 Docker가 필요합니다.
+
+**로컬 실행** (서버만, MongoDB는 따로 띄우고 `DATABASE_URL`로 주소를 넘깁니다)
+
+```bash
+cd server && npm install && npm run start:dev
+```
+
+**docker 실행** (저장소 루트에서, 프런트·서버·DB를 함께 띄웁니다)
+
+```bash
+docker compose up -d --build
+```
+
+기동 후 2분 안에 `/__health`가 200과 `releaseId`를 돌려주면 정상입니다. 종료와 DB 초기화는 `docker compose down -v`.
+
+**검사** (typecheck·lint·test, CI도 같은 명령을 돌립니다)
+
+```bash
+cd server && npm run check
+```
 
 ## 환경변수
 
@@ -108,6 +128,7 @@ SUMTECH 2026 루프톤 팀 서비스 저장소입니다. 주제: AI 에이전트
 | `DATABASE_URL` | DB 연결 주소 | docker-compose·배포 |
 | `SEED_USER_EMAIL` / `SEED_USER_PASSWORD` | 로컬 docker 시드 계정 | docker-compose |
 | `AI_GATEWAY_API_KEY` | AI Gateway 키 (필요할 때만) | 배포 환경변수·GitHub Secrets |
+| `SESSION_SECRET` | 세션 쿠키 서명 키 | docker-compose(로컬 전용 값)·배포 환경변수 |
 
 변수 이름 목록은 `.env.example`에 있습니다.
 

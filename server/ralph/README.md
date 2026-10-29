@@ -23,6 +23,9 @@ node server/ralph/check.mjs status         # 현재 상태 표
 ```
 끝나면 `logs/summary.csv`와 `reviews/`를 보고 PR을 올린다. `BLOCKED.md`가 생기면 사람이 읽고 명세·표지판을 고친 뒤 `node check.mjs unblock C1-3`로 다시 연다.
 
+## 여러 단계 이어 돌리기
+`server/ralph/run-stages.sh 02 03 04 05 06 07` — 단계마다 적재 → 루프. 하나라도 멈추면(BLOCKED·권한·한도·상한) 거기서 끝난다. 단계는 서로 의존하므로 병렬로 돌리지 않는다(같은 ledger·git, 위키 지침 20번).
+
 ## 사람이 하는 일
 - 명세(`specs/`)와 결정은 루프 전에 끝낸다. 루프 중 제품 결정이 필요하면 verify가 FAIL 사유에 "결정 필요"라고 쓰고, 사람이 명세를 고친다.
 - 실패 패턴이 보이면 `AGENT.md`에 규칙 한 줄을 더한다(표지판). 상태 보고는 적지 않는다.
