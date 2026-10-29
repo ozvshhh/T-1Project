@@ -30,7 +30,8 @@ test("S2 새 취준생이 이력서 화면에서 활동을 직접 추가해 경�
   await page.getByRole("button", { name: "경험 만들기" }).click()
 
   // 5. 경험 상세 화면의 경험 카드에서 '직접 추가'를 누른다
-  await page.getByRole("button", { name: "직접 추가" }).click()
+  // exact: 이력서 화면의 '활동 직접 추가'와 이름이 겹친다. 화면 전환이 늦으면 그 버튼을 눌러 버린다(CI 실패).
+  await page.getByRole("button", { name: "직접 추가", exact: true }).click()
 
   // 6. '항목'에서 '역할'을 고르고, '내용'에 입력하고, '내가 말함'을 고른 뒤 '카드에 추가'를 누른다
   await page.getByLabel("항목").selectOption({ label: "역할" })
