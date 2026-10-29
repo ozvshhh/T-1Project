@@ -7,14 +7,14 @@ CLAIMS=$(node $R/check.mjs count)
 DEFAULT_MAX=$(( CLAIMS * 4 + 2 ))              # 위키 관찰: 상한은 주장 수 × 3보다 크게
 MAX="${1:-$DEFAULT_MAX}"
 mkdir -p $R/logs $R/reviews $R/confirms
-# 역할별 모델. 기본은 opus(사용량 한도 보호). 바꾸려면 환경변수로: VERIFY_MODEL=fable server/ralph/ralph.sh
-VERIFY_MODEL="${VERIFY_MODEL:-opus}"; FIX_MODEL="${FIX_MODEL:-opus}"; CONFIRM_MODEL="${CONFIRM_MODEL:-opus}"
+# 역할별 모델. verify·fix·sweep은 opus, confirm(diff 대조)은 sonnet. 바꾸려면 환경변수로: VERIFY_MODEL=fable server/ralph/ralph.sh
+VERIFY_MODEL="${VERIFY_MODEL:-opus}"; FIX_MODEL="${FIX_MODEL:-opus}"; CONFIRM_MODEL="${CONFIRM_MODEL:-sonnet}"; SWEEP_MODEL="${SWEEP_MODEL:-opus}"
 echo "주장 ${CLAIMS}개, 최대 반복 ${MAX}"
 
 # npm은 저장소 루트에서 `npm --prefix server ...` 또는 `cd server && npm ...` 형태만 허용(규칙은 명령 앞부분 일치).
 COMMON=(Read Glob Grep "Bash(ls:*)" "Bash(cat:*)" "Bash(npm --prefix server:*)" "Bash(cd server && npm:*)" "Bash(npm run:*)" "Bash(npm test:*)" "Bash(npm ci:*)" "Bash(npm install:*)" "Bash(git status:*)" "Bash(git diff:*)" "Bash(git log:*)" "Bash(git show:*)")
 VERIFY_TOOLS=("${COMMON[@]}" "Edit($R/reviews/*)" "Bash(docker compose:*)" "Bash(curl:*)" "Bash(sleep:*)")
-FIX_TOOLS=("${COMMON[@]}" Write Edit "Bash(npx nest:*)" "Bash(cd server && npx:*)" "Bash(mkdir:*)" "Bash(git add:*)" "Bash(git commit:*)")
+FIX_TOOLS=("${COMMON[@]}" Write Edit "Bash(npx nest:*)" "Bash(cd server && npx:*)" "Bash(mkdir:*)" "Bash(git rm:*)" "Bash(git add:*)" "Bash(git commit:*)")
 FIX_DENY=("Edit($R/**)" "Edit(docs/**)" "Edit(frontend/**)" "Edit(e2e/**)" WebSearch WebFetch)
 CONFIRM_TOOLS=("${COMMON[@]}" "Edit($R/confirms/*)")
 
@@ -25,6 +25,28 @@ for i in $(seq 1 "$MAX"); do
     BLOCKED)  echo "=== BLOCKED.md 확인 후 사람이 판단하세요. ==="; exit 1 ;;
   esac
   ROLE=${NEXT%% *}; CID=${NEXT##* }
+  if [ "$ROLE" = sweep ]; then
+    start=$(date +%s)
+    STAGE=$(node -e "const l=require('./$R/ledger.json');console.log(l.stage)")
+    CLAIMS_JSON=$(node -e "const l=require('./$R/ledger.json');console.log(JSON.stringify(l.claims.filter(c=>c.spec===l.stage).map(c=>({id:c.id,title:c.title,docker:c.docker}))))")
+    echo ""; echo "=== 반복 $i/$MAX  역할=sweep(단계 끝 재검증)  명세=$STAGE  ($(date +%H:%M:%S)) ==="
+    PROMPT="$(cat $R/prompts/sweep.md)
+
+## 이번 단계의 주장 전부
+$CLAIMS_JSON
+
+## 읽을 파일(이 순서로)
+1. $R/AGENT.md
+2. $R/specs/$STAGE
+3. docs/api.md (해당 절만)
+4. 명세 「바탕」 줄이 가리키는 다른 문서(해당 절만)"
+    claude -p "$PROMPT" --model "$SWEEP_MODEL" --permission-mode default --allowedTools "${VERIFY_TOOLS[@]}" 2>&1 | tee "$R/logs/$i-sweep.log"
+    if grep -qiE "requested permissions|permission (was )?denied|denied for approval|haven.t granted" "$R/logs/$i-sweep.log"; then echo "=== 권한 거부로 멈춤: $R/logs/$i-sweep.log ==="; exit 4; fi
+    RESULT=$(node $R/check.mjs after sweep ALL)
+    secs=$(( $(date +%s) - start ))
+    echo "--- $RESULT | ${secs}초"; echo "$i,sweep,$STAGE,\"$RESULT\",$secs" >> $R/logs/summary.csv
+    continue
+  fi
   SPEC=$(node -e "const l=require('./$R/ledger.json');console.log(l.claims.find(c=>c.id==='$CID').spec)")
   CLAIM=$(node -e "const l=require('./$R/ledger.json');const c=l.claims.find(c=>c.id==='$CID');console.log(JSON.stringify(c))")
   start=$(date +%s)
@@ -38,7 +60,8 @@ $CLAIM
 ## 읽을 파일(이 순서로)
 1. $R/AGENT.md
 2. $R/specs/$SPEC
-3. docs/api.md (해당 절만)"
+3. docs/api.md (해당 절만)
+4. 명세 「바탕」 줄이 가리키는 다른 문서(해당 절만)"
 
   case "$ROLE" in
     verify)
@@ -46,15 +69,15 @@ $CLAIM
     fix)
       node $R/check.mjs before fix "$CID" >/dev/null
       PROMPT="$PROMPT
-4. $R/reviews/$CID.md (반영할 제안)"
+5. $R/reviews/$CID.md (반영할 제안)"
       claude -p "$PROMPT" --model "$FIX_MODEL" --permission-mode acceptEdits --allowedTools "${FIX_TOOLS[@]}" --disallowedTools "${FIX_DENY[@]}" 2>&1 | tee "$R/logs/$i-fix-$CID.log" ;;
     confirm)
       SNAP=$(node -e "const l=require('./$R/ledger.json');console.log(l.claims.find(c=>c.id==='$CID').snapshot)")
       N=$(node -e "const l=require('./$R/ledger.json');console.log(l.claims.find(c=>c.id==='$CID').fixCount+1)")
       PROMPT="$PROMPT
-4. $R/reviews/$CID.md (제안)
-5. 수정 전 스냅샷 commit: $SNAP — 'git diff $SNAP..HEAD -- server docker-compose.yml deploy README.md'로 변경을 본다
-6. 결과 파일 이름: $R/confirms/$CID-$N.md"
+5. $R/reviews/$CID.md (제안)
+6. 수정 전 스냅샷 commit: $SNAP — 'git diff $SNAP..HEAD -- server Dockerfile docker-compose.yml deploy README.md .github'로 변경을 본다
+7. 결과 파일 이름: $R/confirms/$CID-$N.md"
       claude -p "$PROMPT" --model "$CONFIRM_MODEL" --permission-mode default --allowedTools "${CONFIRM_TOOLS[@]}" 2>&1 | tee "$R/logs/$i-confirm-$CID.log" ;;
   esac
 
