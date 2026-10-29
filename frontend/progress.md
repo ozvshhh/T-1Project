@@ -19,3 +19,5 @@
   남은 일: 5번 목 API ③ 점검(자소서 수정·문항 응답 수정·생성 때 점검 stale 처리를 자소서 경로에 더해야 함). 막힌 점 없음.
 - [5] 점검 목 경로(만들기·목록·조회·문장 시작·답하기·후보 확정/버리기) 추가, 자소서 수정·문항 응답 수정·생성 때 점검 stale, db v3(checks), checks.test.ts 추가. client의 newCandidates 타입을 Check['candidates']로(api.md 9절 experienceId).
   남은 일: 6번 공통 레이아웃. 막힌 점 없음(시드 2·3번 문장은 mock-data 표대로 한 문장을 '높였고,' 뒤에서 나눈 두 절로 둠).
+- [6] 헤더(로그인 전·후), RequireAuth·RequireUnlocked 가드, useAiCall·AiStatus, StatusRow, StageBlock, 401 이벤트 추가, common.test.tsx 추가.
+  남은 일: 7번 A 소개·B 가입·로그인(App 라우트에 가드를 붙이는 건 각 화면 작업에서). 막힌 점 없음(가드 테스트는 화면이 없어 자리 표시 라우트로 검사).

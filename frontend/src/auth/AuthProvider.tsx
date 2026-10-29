@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
-import { api, clearToken, getToken } from '@/api/client'
+import { api, clearToken, getToken, UNAUTHORIZED_EVENT } from '@/api/client'
 import type { User } from '@/api/types'
 import { AuthContext } from '@/auth/context'
 
@@ -18,6 +18,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(null)
       })
       .finally(() => setReady(true))
+  }, [])
+
+  // 어떤 요청이든 401을 받으면 로그인 상태를 비운다(보호 화면이 /login으로 보낸다).
+  useEffect(() => {
+    const onUnauthorized = () => setUser(null)
+    window.addEventListener(UNAUTHORIZED_EVENT, onUnauthorized)
+    return () => window.removeEventListener(UNAUTHORIZED_EVENT, onUnauthorized)
   }, [])
 
   // 로그아웃은 별도 API 없이 토큰을 버리는 것으로 끝난다.

@@ -1,5 +1,10 @@
-import { Link, Outlet, useNavigate } from 'react-router-dom'
+import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { useAuth } from '@/auth/context'
+
+const MENU = [
+  { to: '/cover-letters', label: '자소서' },
+  { to: '/experiences', label: '경험' },
+]
 
 export default function Layout() {
   const { user, logout } = useAuth()
@@ -11,10 +16,18 @@ export default function Layout() {
         <Link to="/" className="flex min-h-[44px] items-center text-lg font-bold">
           T-1Project
         </Link>
-        <div className="flex items-center gap-3">
+        <nav className="flex flex-wrap items-center gap-3">
           {user ? (
             <>
-              <span className="text-[15px]">{user.email}</span>
+              {MENU.map(({ to, label }) => (
+                <NavLink
+                  key={to}
+                  to={to}
+                  className="flex min-h-[44px] items-center px-2 text-[17px] underline-offset-8 aria-[current=page]:underline"
+                >
+                  {label}
+                </NavLink>
+              ))}
               <button
                 type="button"
                 className="btn btn-sm btn-secondary"
@@ -27,11 +40,16 @@ export default function Layout() {
               </button>
             </>
           ) : (
-            <Link to="/login" className="btn btn-sm btn-secondary">
-              로그인
-            </Link>
+            <>
+              <Link to="/login" className="btn btn-sm btn-secondary">
+                로그인
+              </Link>
+              <Link to="/signup" className="btn btn-sm btn-secondary">
+                가입하기
+              </Link>
+            </>
           )}
-        </div>
+        </nav>
       </header>
       <Outlet />
     </div>

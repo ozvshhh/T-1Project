@@ -26,6 +26,8 @@ export class ApiError extends Error {
 }
 
 const TOKEN_KEY = 't1-token'
+/** 401을 받아 토큰을 지웠을 때 window에 알리는 이벤트. AuthProvider가 듣고 로그인 상태를 비운다. */
+export const UNAUTHORIZED_EVENT = 't1-unauthorized'
 
 export function getToken(): string | null {
   try {
@@ -74,7 +76,10 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 
   const data = await res.json().catch(() => null)
   if (!res.ok) {
-    if (res.status === 401) clearToken()
+    if (res.status === 401) {
+      clearToken()
+      window.dispatchEvent(new Event(UNAUTHORIZED_EVENT))
+    }
     const error = data?.error
     throw new ApiError(
       res.status,
