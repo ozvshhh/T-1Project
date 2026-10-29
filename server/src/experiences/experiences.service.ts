@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { assertOwner, parseObjectIdOr404 } from '../common/ownership';
@@ -16,7 +16,7 @@ import {
 import { Experience } from './experience.schema';
 import { ExperienceInput } from './experience.validation';
 import { Fact } from './fact.schema';
-import { FACT_REASONS, FactInput, factValidationError } from './fact.validation';
+import { ConfirmFactInput, FACT_REASONS, FactInput, factValidationError } from './fact.validation';
 
 type ExperienceRecord = Experience & { _id: Types.ObjectId };
 type ClueRecord = Clue & { _id: Types.ObjectId };
@@ -139,6 +139,35 @@ export class ExperiencesService {
       .findOneAndUpdate({ _id: fact._id, experienceId: owned._id }, { $set: input }, { returnDocument: 'after' })
       .lean<FactRecord>();
     if (!updated) throw new NotFoundException({ code: 'NOT_FOUND', message: '찾을 수 없습니다.' });
+    await this.touch(owned);
+    return toFactDto(updated);
+  }
+
+  // 후보만 확정한다. 이미 확정된 사실을 다시 확정하면 출처가 조용히 덮이므로 409로 막는다(명세 06).
+  // itemStatus는 대화 판정이라 건드리지 않고 updatedAt만 올린다(api.md 5절 끝).
+  async confirmFact(userId: string, id: string, factId: string, input: ConfirmFactInput): Promise<FactDto> {
+    const owned = await this.findOwned(userId, id);
+    const fact = await this.findFact(owned, factId);
+    if (fact.status !== 'candidate') {
+      throw new ConflictException({ code: 'FACT_RESOLVED', message: '이미 확정된 사실입니다.' });
+    }
+    if (input.source === 'clue') await this.assertClueOfExperience(owned, input.clueId);
+    const set: Partial<Fact> = {
+      status: 'confirmed',
+      source: input.source,
+      clueId: input.source === 'clue' ? input.clueId : null,
+    };
+    if (input.text !== undefined) set.text = input.text;
+    if (input.item !== undefined) set.item = input.item;
+    // status 조건을 걸어 동시에 두 번 확정해도 한 번만 바뀐다.
+    const updated = await this.facts
+      .findOneAndUpdate(
+        { _id: fact._id, experienceId: owned._id, status: 'candidate' },
+        { $set: set },
+        { returnDocument: 'after' },
+      )
+      .lean<FactRecord>();
+    if (!updated) throw new ConflictException({ code: 'FACT_RESOLVED', message: '이미 확정된 사실입니다.' });
     await this.touch(owned);
     return toFactDto(updated);
   }

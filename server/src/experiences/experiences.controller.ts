@@ -27,7 +27,7 @@ import {
 import { validateAnswer } from './conversation.validation';
 import { ClueDto, ExperienceDto, FactDto } from './experience.dto';
 import { validateCreateExperience, validateUpdateExperience } from './experience.validation';
-import { validateCreateFact, validateUpdateFact } from './fact.validation';
+import { validateConfirmFact, validateCreateFact, validateUpdateFact } from './fact.validation';
 import { ExperiencesService } from './experiences.service';
 
 // RFC 5987: 한글 이름은 filename*로 싣고, 옛 브라우저용 filename에는 ASCII만 남긴다. 헤더 주입을 막으려 따옴표·제어문자도 바꾼다.
@@ -139,6 +139,19 @@ export class ExperiencesController {
     @Body() body: unknown,
   ): Promise<{ fact: FactDto }> {
     return { fact: await this.service.addFact(user.id, id, validateCreateFact(body)) };
+  }
+
+  // AI 후보를 사용자가 확인해 카드에 넣는다(api.md 6절). Nest POST 기본 201이 아니라 api.md대로 200.
+  // 형식 검증을 소유자 조회보다 먼저 해 400 여부로 남의 경험을 떠볼 수 없게 한다.
+  @Post(':id/facts/:factId/confirm')
+  @HttpCode(HttpStatus.OK)
+  async confirmFact(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Param('factId') factId: string,
+    @Body() body: unknown,
+  ): Promise<{ fact: FactDto }> {
+    return { fact: await this.service.confirmFact(user.id, id, factId, validateConfirmFact(body)) };
   }
 
   @Patch(':id/facts/:factId')
