@@ -7,6 +7,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { Response } from 'express';
+import { AiUnavailableError } from '../ai/ai-unavailable.error';
 
 interface ErrorBody {
   error: { code: string; message: string; details?: unknown };
@@ -33,6 +34,14 @@ export class AllExceptionsFilter implements ExceptionFilter {
   }
 
   private toBody(exception: unknown): { status: number; body: ErrorBody } {
+    // AI 실패는 api.md 1절대로 502 AI_UNAVAILABLE. message는 고정 안내문이라 키·원문 응답이 없다.
+    if (exception instanceof AiUnavailableError) {
+      return {
+        status: HttpStatus.BAD_GATEWAY,
+        body: { error: { code: 'AI_UNAVAILABLE', message: exception.message } },
+      };
+    }
+
     if (!(exception instanceof HttpException)) {
       // 원인은 서버 로그에만 남긴다(본문에 넣으면 경로·비밀이 샌다).
       this.logger.error(

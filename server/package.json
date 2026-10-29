@@ -24,6 +24,9 @@
     ],
     "rootDir": "src",
     "testRegex": ".*\\.spec\\.ts$",
+    "setupFiles": [
+      "<rootDir>/no-network.setup.ts"
+    ],
     "transform": {
       "^.+\\.ts$": "ts-jest"
     },
@@ -38,7 +41,8 @@
     "bcryptjs": "^3.0.3",
     "mongoose": "^9.11.4",
     "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.2"
+    "rxjs": "^7.8.2",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
@@ -48,6 +52,7 @@
     "@types/express": "^5.0.6",
     "@types/jest": "^29.5.14",
     "@types/js-yaml": "^4.0.9",
+    "@types/multer": "^2.3.0",
     "@types/node": "^22.20.5",
     "@types/supertest": "^7.2.1",
     "eslint": "^9.39.5",

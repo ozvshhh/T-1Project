@@ -143,8 +143,62 @@
       "status": "pass",
       "fixCount": 1,
       "snapshot": "b070746b6acc1418fafa02c093768cd2000cf0c4"
+    },
+    {
+      "id": "C4-1",
+      "spec": "04-ai.md",
+      "title": "`AiService.json`이 가짜 `fetch`에 대해 올바른 URL·`Authorization: Bearer <키>`·`model`·`response_format`을 보내고, 정상 응답을 zod 검증한 객체로 돌려준다. 키가 비면 `fetch`를 부르지 않고 `AiUnavailableError`. 단위 테스트 있음.",
+      "docker": false,
+      "status": "pass",
+      "fixCount": 1,
+      "snapshot": "308b8d70b6dc5c1b4357b5a7405b4d4748194e8d"
+    },
+    {
+      "id": "C4-2",
+      "spec": "04-ai.md",
+      "title": "401·429·500 응답, 타임아웃, JSON이 아닌 응답, 스키마 불일치가 모두 `AiUnavailableError`가 되고, 5xx·형식 오류는 정확히 1회 재시도한다(호출 횟수 단언). 예외가 HTTP로 나가면 `502 AI_UNAVAILABLE`이고 본문에 키·원문 응답·스택이 없다(테스트).",
+      "docker": false,
+      "status": "pass",
+      "fixCount": 1,
+      "snapshot": "257a1116dee89e4a57a3419f390674ca4ff8abc6"
+    },
+    {
+      "id": "C4-3",
+      "spec": "04-ai.md",
+      "title": "`FakeAiService`가 있고 task별 응답 큐·실패 주입·받은 입력(system/user) 기록을 지원한다. 저장소 전체 테스트에서 실제 네트워크 호출이 없음을 보장하는 장치(예: jest setup에서 전역 `fetch`를 호출 시 실패하는 가짜로 교체)가 있다. 호출 로그 한 줄에 task·model·토큰 수·시간이 있고 키·내용은 없다(테스트).",
+      "docker": false,
+      "status": "pass",
+      "fixCount": 1,
+      "snapshot": "5cb99b8104e7b1056fc98e5dd31229e053751fb9"
+    },
+    {
+      "id": "C5-1",
+      "spec": "05-experiences.md",
+      "title": "`POST /api/experiences`(`title`·`period` 필수, 공백만이면 400) → `201 {experience}`가 api.md 2절 모양(`clues: []`, `itemStatus` 다섯 항목 `null`, `card` 다섯 항목 빈 배열, `candidates: []`)이다. `GET /api/experiences`는 내 것만 최근 수정순, `GET /api/experiences/:id`·`PATCH`(`title`/`period`, 빈 값 400)는 남의 것·없는 id·잘못된 id 형식에 404. e2e 테스트 있음.",
+      "docker": false,
+      "status": "pass",
+      "fixCount": 1,
+      "snapshot": "5b738d636636a6da6b205e9fd8ad2309af46bbbc"
+    },
+    {
+      "id": "C5-2",
+      "spec": "05-experiences.md",
+      "title": "`POST /api/experiences/:id/clues`가 JSON 텍스트 단서(`text` 필수)와 multipart 파일 단서(`type`이 photo·award·document, `file` 필수, `description` 선택)를 받아 `201 {clue}`를 돌려주고, `GET /api/experiences/:id`의 `clues`에 보인다. 파일 바이트는 Mongo에 있고 디스크에 쓰지 않는다. `CLUE_MAX_BYTES` 초과 → 400. `GET .../clues/:clueId/file`이 올린 바이트·Content-Type·파일 이름(Content-Disposition)을 그대로 돌려주고, 텍스트 단서·남의 단서는 404. e2e 테스트 있음.",
+      "docker": false,
+      "status": "pass",
+      "fixCount": 1,
+      "snapshot": "3e93b76d9b3efea36dbadcb731da38d6f7228c25"
+    },
+    {
+      "id": "C5-3",
+      "spec": "05-experiences.md",
+      "title": "`POST /api/experiences/:id/facts`(`item`, `text`, `source` said|clue, `clueId`) → `201 {fact}`(`status: confirmed`, `origin: manual`)이고 경험의 `card[item]`에 들어간다. `PATCH .../facts/:factId`로 text·item·source 수정, `DELETE`는 204. `source: ai_unverified`·없는 item·빈 text·`clue`인데 clueId 없음·다른 경험의 clueId → 400. 사실을 바꿔도 `itemStatus`가 그대로이고 `updatedAt`은 바뀐다. e2e 테스트 있음.",
+      "docker": false,
+      "status": "pass",
+      "fixCount": 1,
+      "snapshot": "51013258130dce4d4315ed003ca4029bd25ba488"
     }
   ],
-  "stage": "03-auth.md",
+  "stage": "05-experiences.md",
   "sweeps": 1
 }

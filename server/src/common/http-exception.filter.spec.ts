@@ -11,6 +11,7 @@ import {
 import request from 'supertest';
 import { createApp } from '../main';
 import { AppModule } from '../app.module';
+import { AiUnavailableError } from '../ai/ai-unavailable.error';
 
 // 테스트 전용: 예외 종류별로 전역 필터가 같은 형식을 내는지 보려고 일부러 던진다.
 @Controller('test-errors')
@@ -38,6 +39,11 @@ class ThrowingController {
   @Get('domain')
   domain(): never {
     throw new ConflictException({ code: 'EMAIL_TAKEN', message: '이미 가입된 이메일입니다.' });
+  }
+
+  @Get('ai')
+  ai(): never {
+    throw new AiUnavailableError();
   }
 }
 
@@ -98,6 +104,20 @@ describe('C1-3 전역 예외 필터 (api.md 1절 오류 형식)', () => {
     const res = await http().get('/api/test-errors/domain');
     expect(res.status).toBe(409);
     expect(res.body).toEqual({ error: { code: 'EMAIL_TAKEN', message: '이미 가입된 이메일입니다.' } });
+  });
+
+  // AI 실패는 api.md 1절대로 502 AI_UNAVAILABLE이어야 프런트가 재시도 버튼을 띄운다. 스택·키가 새면 안 된다.
+  it('AiUnavailableError → 502 { error: { code: AI_UNAVAILABLE, message } }, 스택·키 없음', async () => {
+    process.env.AI_GATEWAY_API_KEY = 'filter-test-key';
+    const res = await http().get('/api/test-errors/ai');
+    expect(res.status).toBe(502);
+    expect(res.body).toEqual({
+      error: { code: 'AI_UNAVAILABLE', message: new AiUnavailableError().message },
+    });
+    expect(res.text).not.toContain('stack');
+    expect(res.text).not.toContain('at ');
+    expect(res.text).not.toContain('filter-test-key');
+    delete process.env.AI_GATEWAY_API_KEY;
   });
 
   // 필터가 정상 응답을 건드리면 주최 측 상태 확인이 깨진다.
