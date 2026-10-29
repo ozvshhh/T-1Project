@@ -7,3 +7,5 @@
   남은 일: 2번 API 타입·클라이언트 교체. 막힌 점 없음(src/mocks·api·auth는 아직 옛 코드).
 - [2] 막힘: 정본 ../docs/api.md 를 읽을 권한이 없어(작업 폴더 밖, 승인 불가) API 타입·경로를 알 수 없음. 추측으로 구현하지 않고 중단.
   남은 일: api.md 읽기 권한(또는 frontend/ 안에 사본)을 준 뒤 2번부터 다시 실행. fix_plan.md 는 그대로 둠.
+- [2] api.md 타입·클라이언트(Bearer, 401이면 토큰 삭제)·auth 토큰 방식으로 교체, 컴파일용 최소 목(auth만)·render 도우미·client.test.ts 추가.
+  남은 일: 3번 목 API ① (db 시드·경험·대화). 막힌 점 없음(prettier 실행은 승인이 필요해 format:check는 18번에서 확인).

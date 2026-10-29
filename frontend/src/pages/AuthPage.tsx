@@ -44,9 +44,9 @@ export default function AuthPage({ mode }: { mode: Mode }) {
       const res =
         mode === 'signup' ? await api.signup(email, password) : await api.login(email, password)
       setUser(res.user)
-      // 가입·로그인 직후 원래 가려던 곳으로, 없으면 '내 이력서'로.
+      // 가입·로그인 직후 원래 가려던 곳으로, 없으면 자소서 목록으로.
       const from = (location.state as { from?: string } | null)?.from
-      navigate(from ?? '/resume', { replace: true })
+      navigate(from ?? '/cover-letters', { replace: true })
     } catch (err) {
       setError(err instanceof ApiError ? err.message : '요청을 처리하지 못했어요.')
     } finally {
