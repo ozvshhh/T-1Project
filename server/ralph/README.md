@@ -12,6 +12,9 @@
 다음 역할은 `check.mjs`가 ledger 상태로 고른다(fix > confirm > verify). 상태 흐름:
 `todo → (verify) pass | fail → (fix) fixed → (confirm) OK→todo(재검증) | REJECT→fail(fixCount+1)`. fixCount > 3 → `blocked`, `BLOCKED.md` 작성 후 멈춤.
 
+## 모델
+기본은 세 역할 모두 `opus`(사용량 한도 보호). 바꾸려면 `VERIFY_MODEL=fable server/ralph/ralph.sh`처럼 환경변수로. 사용량 한도·인증 오류가 로그에 보이면 루프는 ledger를 건드리지 않고 멈춘다(exit 3). 한도가 풀리면 같은 명령으로 다시 돌린다.
+
 ## 돌리는 법 (저장소 루트에서)
 ```bash
 node server/ralph/check.mjs load 01        # 명세 01의 주장을 ledger에 적재(이미 있으면 건너뜀)

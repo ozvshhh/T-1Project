@@ -7,6 +7,8 @@ CLAIMS=$(node $R/check.mjs count)
 DEFAULT_MAX=$(( CLAIMS * 4 + 2 ))              # 위키 관찰: 상한은 주장 수 × 3보다 크게
 MAX="${1:-$DEFAULT_MAX}"
 mkdir -p $R/logs $R/reviews $R/confirms
+# 역할별 모델. 기본은 opus(사용량 한도 보호). 바꾸려면 환경변수로: VERIFY_MODEL=fable server/ralph/ralph.sh
+VERIFY_MODEL="${VERIFY_MODEL:-opus}"; FIX_MODEL="${FIX_MODEL:-opus}"; CONFIRM_MODEL="${CONFIRM_MODEL:-opus}"
 echo "주장 ${CLAIMS}개, 최대 반복 ${MAX}"
 
 COMMON=(Read Glob Grep "Bash(ls:*)" "Bash(cat:*)" "Bash(npm run:*)" "Bash(npm test:*)" "Bash(npx jest:*)" "Bash(git status:*)" "Bash(git diff:*)" "Bash(git log:*)" "Bash(git show:*)")
@@ -39,12 +41,12 @@ $CLAIM
 
   case "$ROLE" in
     verify)
-      claude -p "$PROMPT" --permission-mode default --allowedTools "${VERIFY_TOOLS[@]}" 2>&1 | tee "$R/logs/$i-verify-$CID.log" ;;
+      claude -p "$PROMPT" --model "$VERIFY_MODEL" --permission-mode default --allowedTools "${VERIFY_TOOLS[@]}" 2>&1 | tee "$R/logs/$i-verify-$CID.log" ;;
     fix)
       node $R/check.mjs before fix "$CID" >/dev/null
       PROMPT="$PROMPT
 4. $R/reviews/$CID.md (반영할 제안)"
-      claude -p "$PROMPT" --permission-mode acceptEdits --allowedTools "${FIX_TOOLS[@]}" --disallowedTools "${FIX_DENY[@]}" 2>&1 | tee "$R/logs/$i-fix-$CID.log" ;;
+      claude -p "$PROMPT" --model "$FIX_MODEL" --permission-mode acceptEdits --allowedTools "${FIX_TOOLS[@]}" --disallowedTools "${FIX_DENY[@]}" 2>&1 | tee "$R/logs/$i-fix-$CID.log" ;;
     confirm)
       SNAP=$(node -e "const l=require('./$R/ledger.json');console.log(l.claims.find(c=>c.id==='$CID').snapshot)")
       N=$(node -e "const l=require('./$R/ledger.json');console.log(l.claims.find(c=>c.id==='$CID').fixCount+1)")
@@ -52,9 +54,14 @@ $CLAIM
 4. $R/reviews/$CID.md (제안)
 5. 수정 전 스냅샷 commit: $SNAP — 'git diff $SNAP..HEAD -- server docker-compose.yml deploy README.md'로 변경을 본다
 6. 결과 파일 이름: $R/confirms/$CID-$N.md"
-      claude -p "$PROMPT" --permission-mode default --allowedTools "${CONFIRM_TOOLS[@]}" 2>&1 | tee "$R/logs/$i-confirm-$CID.log" ;;
+      claude -p "$PROMPT" --model "$CONFIRM_MODEL" --permission-mode default --allowedTools "${CONFIRM_TOOLS[@]}" 2>&1 | tee "$R/logs/$i-confirm-$CID.log" ;;
   esac
 
+  # 사용량 한도·인증 오류는 작업 실패가 아니다. ledger를 건드리지 않고 멈춘다(사람이 나중에 다시 실행).
+  if grep -qiE "usage limit|rate limit|limit reached|out of.*(quota|credits)|429|not logged in|authentication" "$R/logs/$i-$ROLE-$CID.log"; then
+    echo "=== 사용량 한도 또는 인증 오류로 보여 멈춥니다. 로그: $R/logs/$i-$ROLE-$CID.log. 한도가 풀리면 같은 명령으로 다시 실행하세요. ==="
+    exit 3
+  fi
   RESULT=$(node $R/check.mjs after "$ROLE" "$CID")
   secs=$(( $(date +%s) - start ))
   echo "--- $RESULT | ${secs}초"
