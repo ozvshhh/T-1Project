@@ -31,3 +31,5 @@
   막힌 점: 기존 Experiences.test.tsx의 "대화 시작 → 없는 페이지예요" 테스트가 이제 실패함(그 주석이 10번에서 바뀐다고 적음). 규칙상 고치지 않았으니 사람이 상세 화면 확인으로 바꿔야 함. 남은 일: 11번.
 - [11] FactPanels 신설(후보 확정·버리기, 경험 카드 고치기·지우기·직접 추가)을 ExperienceDetail에 연결, FactPanels.test.tsx(S2 흐름 포함) 추가.
   남은 일: 12번 G 붙여넣기. 막힌 점: 10번에서 적은 Experiences.test.tsx의 "대화 시작 → 없는 페이지예요" 테스트는 그대로(사람이 고쳐야 함).
+- [12] CoverLetterPaste(G) 신설, App에 RequireUnlocked로 /cover-letters/paste 연결, CoverLetterPaste.test.tsx(S3 흐름·잠금) 추가.
+  남은 일: 13번 H 작성 시작. 막힌 점: J(15번) 전 이라 저장 뒤 상세 본문 확인은 못 하고 목록 증가로 검사함.

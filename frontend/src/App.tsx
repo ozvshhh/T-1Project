@@ -1,6 +1,7 @@
 import { Route, Routes } from 'react-router-dom'
-import { RequireAuth } from '@/components/guards'
+import { RequireAuth, RequireUnlocked } from '@/components/guards'
 import Layout from '@/components/Layout'
+import CoverLetterPaste from '@/pages/CoverLetterPaste'
 import AuthPage from '@/pages/AuthPage'
 import ExperienceDetail from '@/pages/ExperienceDetail'
 import ExperienceNew from '@/pages/ExperienceNew'
@@ -22,6 +23,9 @@ export default function App() {
           <Route path="/experiences" element={<Experiences />} />
           <Route path="/experiences/new" element={<ExperienceNew />} />
           <Route path="/experiences/:id" element={<ExperienceDetail />} />
+          <Route element={<RequireUnlocked />}>
+            <Route path="/cover-letters/paste" element={<CoverLetterPaste />} />
+          </Route>
         </Route>
         <Route path="*" element={<NotFound />} />
       </Route>
