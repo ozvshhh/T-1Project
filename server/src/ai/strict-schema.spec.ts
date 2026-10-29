@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { judgeSchema, questionSchema, sentencesSchema } from '../checks/prompts';
 import { answerSchema, recommendSchema } from '../cover-letters/prompts';
 import { conversationAnswerSchema, conversationStartSchema } from '../experiences/prompts';
+import { resumeSplitSchema } from '../resume/prompts';
 
 // Gateway(OpenAI) strict json_schema는 객체마다 모든 칸이 required여야 한다. 선택 칸(optional·nullish)이 있으면
 // 실제 호출이 400으로 거절되는데, FakeAi를 쓰는 다른 테스트로는 드러나지 않는다(2026-10-30 check-answer 실패).
@@ -13,6 +14,7 @@ const SCHEMAS = {
   sentencesSchema,
   questionSchema,
   judgeSchema,
+  resumeSplitSchema,
 };
 
 function missingRequired(node: unknown, at: string): string[] {

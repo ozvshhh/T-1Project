@@ -10,6 +10,8 @@ import { Connection, Types } from 'mongoose';
 import request from 'supertest';
 import { AuthModule } from '../auth/auth.module';
 import { AllExceptionsFilter } from '../common/http-exception.filter';
+import { ResumeModule } from '../resume/resume.module';
+import { createExperienceViaResume } from '../resume/resume.test-helper';
 import { UsersModule } from '../users/users.module';
 import { ExperiencesModule } from './experiences.module';
 
@@ -50,6 +52,7 @@ async function bootApp(
         UsersModule,
         AuthModule,
         ExperiencesModule,
+        ResumeModule,
       ],
     }).compile();
     const app = moduleRef.createNestApplication({ logger: false });
@@ -73,13 +76,9 @@ function helpers(getApp: () => INestApplication) {
       const res = await http().post('/api/auth/signup').send({ email, password: 'pass-1234' }).expect(201);
       return (res.body as { token: string }).token;
     },
+    // 경험은 이력서 초안 확정으로만 만든다(명세 10).
     async createExperience(token: string): Promise<ExperienceBody> {
-      const res = await http()
-        .post('/api/experiences')
-        .set('Authorization', `Bearer ${token}`)
-        .send({ title: '동아리 축제', period: '2025년 여름' })
-        .expect(201);
-      return (res.body as { experience: ExperienceBody }).experience;
+      return createExperienceViaResume<ExperienceBody>(getApp(), token, { title: '동아리 축제', period: '2025년 여름' });
     },
     postFile(
       token: string,

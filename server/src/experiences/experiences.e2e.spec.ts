@@ -8,6 +8,8 @@ import { Connection } from 'mongoose';
 import request from 'supertest';
 import { AuthModule } from '../auth/auth.module';
 import { AllExceptionsFilter } from '../common/http-exception.filter';
+import { ResumeModule } from '../resume/resume.module';
+import { createExperienceViaResume } from '../resume/resume.test-helper';
 import { UsersModule } from '../users/users.module';
 import { ExperiencesModule } from './experiences.module';
 
@@ -17,6 +19,7 @@ interface ExperienceBody {
   id: string;
   title: string;
   period: string;
+  summary: string;
   clues: unknown[];
   itemStatus: Record<string, unknown>;
   card: Record<string, unknown[]>;
@@ -33,7 +36,7 @@ const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // 경험은 모든 기능(대화·사실·자소서)의 바탕이라, 모양이 api.md 2절과 다르거나 남의 경험이 보이면 이후 단계가 전부 틀어진다(R1·R2·R6).
-describe('C5-1 /api/experiences create·list·get·patch', () => {
+describe('C5-1 /api/experiences list·get·patch (경험은 이력서 초안 확정으로 만든다, 명세 10)', () => {
   const savedSecret = process.env.JWT_SECRET;
   let mongod: MongoMemoryServer;
   let app: INestApplication;
@@ -48,15 +51,9 @@ describe('C5-1 /api/experiences create·list·get·patch', () => {
     return (res.body as { token: string }).token;
   }
 
-  async function create(token: string, body: unknown): Promise<request.Response> {
-    return http().post('/api/experiences').set('Authorization', `Bearer ${token}`).send(body as object);
-  }
-
-  async function createOk(token: string, title: string, period = '2025년 여름'): Promise<ExperienceBody> {
-    const res = await create(token, { title, period });
-    expect(res.status).toBe(201);
-    return (res.body as { experience: ExperienceBody }).experience;
-  }
+  // POST /api/experiences는 명세 10이 없앴다. 사용자와 같은 길(초안 추가 → 확정)로 경험을 만든다.
+  const createOk = (token: string, title: string, period = '2025년 여름', summary = ''): Promise<ExperienceBody> =>
+    createExperienceViaResume<ExperienceBody>(app, token, { title, period, summary });
 
   const expectValidation = (res: request.Response, field: string) => {
     expect(res.status).toBe(400);
@@ -83,6 +80,7 @@ describe('C5-1 /api/experiences create·list·get·patch', () => {
         UsersModule,
         AuthModule,
         ExperiencesModule,
+        ResumeModule,
       ],
     }).compile();
     app = moduleRef.createNestApplication({ logger: false });
@@ -101,6 +99,7 @@ describe('C5-1 /api/experiences create·list·get·patch', () => {
   afterEach(async () => {
     await connection.collection('users').deleteMany({});
     await connection.collection('experiences').deleteMany({});
+    await connection.collection('resumes').deleteMany({});
   });
 
   afterAll(async () => {
@@ -111,19 +110,17 @@ describe('C5-1 /api/experiences create·list·get·patch', () => {
   });
 
   // 프런트는 새 경험을 바로 카드·대화 화면에 그리므로 빈 단서·null 상태·빈 카드가 정확한 키로 와야 한다.
-  it('POST returns 201 {experience} in the api.md section 2 shape', async () => {
-    const res = await create(tokenA, { title: '  동아리 축제 운영  ', period: '2025년 여름' });
+  // 확정 경험은 이력서에서 온 summary를 실어야 R3 대화가 그 내용을 바탕으로 묻는다(api.md 2절).
+  it('a confirmed experience comes back in the api.md section 2 shape with summary', async () => {
+    const exp = await createOk(tokenA, '  동아리 축제 운영  ', '2025년 여름', '축제 부스 운영 총괄');
 
-    expect(res.status).toBe(201);
-    const body = res.body as { experience: Record<string, unknown> };
-    expect(Object.keys(body)).toEqual(['experience']);
-    const exp = body.experience as unknown as ExperienceBody;
     expect(Object.keys(exp).sort()).toEqual(
-      ['candidates', 'card', 'clues', 'createdAt', 'id', 'itemStatus', 'period', 'title', 'updatedAt'].sort(),
+      ['candidates', 'card', 'clues', 'createdAt', 'id', 'itemStatus', 'period', 'summary', 'title', 'updatedAt'].sort(),
     );
     expect(exp.id).toMatch(/^[0-9a-f]{24}$/);
     expect(exp.title).toBe('동아리 축제 운영');
     expect(exp.period).toBe('2025년 여름');
+    expect(exp.summary).toBe('축제 부스 운영 총괄');
     expect(exp.clues).toEqual([]);
     expect(exp.itemStatus).toEqual(Object.fromEntries(ITEMS.map((i) => [i, null])));
     expect(exp.card).toEqual(Object.fromEntries(ITEMS.map((i) => [i, []])));
@@ -132,25 +129,22 @@ describe('C5-1 /api/experiences create·list·get·patch', () => {
     expect(exp.updatedAt).toMatch(ISO);
   });
 
-  // 제목·시기가 비면 카드 목록에서 구분할 수 없어 저장 전에 칸을 짚어 400으로 돌려보낸다.
-  it.each([
-    ['title missing', { period: '2025년' }, 'title'],
-    ['period missing', { title: '축제' }, 'period'],
-    ['title blank', { title: '   ', period: '2025년' }, 'title'],
-    ['period blank', { title: '축제', period: '  ' }, 'period'],
-    ['title not a string', { title: 123, period: '2025년' }, 'title'],
-    ['period not a string', { title: '축제', period: ['2025'] }, 'period'],
-  ])('POST rejects %s with 400 VALIDATION', async (_label, body, field) => {
-    expectValidation(await create(tokenA, body), field);
+  // 경험을 따로 만드는 API는 없다(명세 10, 학생 결정 2026-10-30). 입력 검증 400은 확정 API(C10-3)로 옮겼다.
+  it('POST /api/experiences is 404 and creates nothing', async () => {
+    const res = await http()
+      .post('/api/experiences')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({ title: '축제', period: '2025년' });
+    expectNotFound(res);
     expect(await connection.collection('experiences').countDocuments()).toBe(0);
   });
 
-  // 전역 가드가 경험 API에도 걸려야 로그인 전 사용자가 데이터를 만들거나 볼 수 없다(C3).
-  it('requires a token for POST and GET', async () => {
-    const post = await http().post('/api/experiences').send({ title: '축제', period: '2025년' });
-    expect(post.status).toBe(401);
+  // 전역 가드가 경험 API에도 걸려야 로그인 전 사용자가 데이터를 볼 수 없다(C3).
+  it('requires a token for GET', async () => {
     const list = await http().get('/api/experiences');
     expect(list.status).toBe(401);
+    const one = await http().get('/api/experiences/0123456789abcdef01234567');
+    expect(one.status).toBe(401);
   });
 
   // 목록은 내 것만, 방금 고친 경험이 맨 앞이어야 이어서 작업할 카드를 바로 찾는다(R1·R6).
@@ -201,7 +195,7 @@ describe('C5-1 /api/experiences create·list·get·patch', () => {
 
   // 제목·시기는 따로 고칠 수 있어야 하고, 고치면 updatedAt이 바뀌어야 목록 순서가 맞는다(R6).
   it('PATCH updates title or period alone and bumps updatedAt', async () => {
-    const exp = await createOk(tokenA, '원래 제목', '2024년');
+    const exp = await createOk(tokenA, '원래 제목', '2024년', '이력서 줄');
     await sleep(15);
 
     const r1 = await http()
@@ -212,6 +206,8 @@ describe('C5-1 /api/experiences create·list·get·patch', () => {
     const e1 = (r1.body as { experience: ExperienceBody }).experience;
     expect(e1.title).toBe('새 제목');
     expect(e1.period).toBe('2024년');
+    // PATCH가 summary를 지우면 이후 대화가 이력서 내용을 잃는다.
+    expect(e1.summary).toBe('이력서 줄');
     expect(Date.parse(e1.updatedAt)).toBeGreaterThan(Date.parse(exp.updatedAt));
     expect(e1.createdAt).toBe(exp.createdAt);
 

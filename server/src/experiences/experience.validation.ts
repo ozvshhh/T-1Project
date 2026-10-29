@@ -32,18 +32,6 @@ function throwIfAny(details: FieldError[]): void {
   }
 }
 
-// POST: title·period 둘 다 필수(api.md 4절).
-export function validateCreateExperience(body: unknown): ExperienceInput {
-  const obj = asObject(body);
-  const details: FieldError[] = [];
-  const title = trimmed(obj.title);
-  const period = trimmed(obj.period);
-  if (title === null) details.push({ field: 'title', reason: REASONS.title });
-  if (period === null) details.push({ field: 'period', reason: REASONS.period });
-  throwIfAny(details);
-  return { title: title!, period: period! };
-}
-
 // PATCH: 보낸 칸만 고친다. 보낸 칸이 비었거나 문자열이 아니면 400(빈 값으로 덮어쓰지 않는다).
 export function validateUpdateExperience(body: unknown): Partial<ExperienceInput> {
   const obj = asObject(body);

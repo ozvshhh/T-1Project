@@ -12,6 +12,8 @@ import { FakeAiService } from '../ai/fake-ai.service';
 import { AuthModule } from '../auth/auth.module';
 import { AllExceptionsFilter } from '../common/http-exception.filter';
 import { CoverLettersModule } from '../cover-letters/cover-letters.module';
+import { ResumeModule } from '../resume/resume.module';
+import { createExperienceViaResume } from '../resume/resume.test-helper';
 import { UsersModule } from '../users/users.module';
 import { ChecksModule } from './checks.module';
 
@@ -109,6 +111,7 @@ describe('C8-1 /api/cover-letters/:id/checks create·get·list', () => {
         AiModule,
         CoverLettersModule,
         ChecksModule,
+        ResumeModule,
       ],
     })
       .overrideProvider(AiService)
@@ -749,13 +752,9 @@ describe('C8-1 /api/cover-letters/:id/checks create·get·list', () => {
       candidates,
     });
 
+    // 경험은 이력서 초안 확정으로만 만든다(명세 10).
     async function experience(token: string, title = '축제 운영'): Promise<string> {
-      const res = await http()
-        .post('/api/experiences')
-        .set(auth(token))
-        .send({ title, period: '2025년 여름' })
-        .expect(201);
-      return (res.body as { experience: { id: string } }).experience.id;
+      return (await createExperienceViaResume(app, token, { title, period: '2025년 여름' })).id;
     }
 
     async function clue(token: string, expId: string): Promise<string> {

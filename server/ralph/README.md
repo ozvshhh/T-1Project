@@ -46,4 +46,5 @@ node server/ralph/check.mjs status         # 현재 상태 표
 | 07-cover-letters | 붙여넣기·문항별 작성(추천→선택→생성) | 6 |
 | 08-checks | 제출 전 점검(문장 고르기·근거 묻기·후보 저장) | 4 |
 | 09-seed | mock-data.md 시드 | 2 |
+| 10-resume | 기획 변경: 이력서 API·초안 확정으로 경험 만들기, `summary`, `POST /experiences` 제거, 시드(이력서·라라테크) | 6 |
 설계·순서·사람이 할 일은 `docs/backend-plan.md`.

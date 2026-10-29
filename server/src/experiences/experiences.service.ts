@@ -19,6 +19,12 @@ import { Fact } from './fact.schema';
 import { ConfirmFactInput, FACT_REASONS, FactInput, factValidationError } from './fact.validation';
 
 type ExperienceRecord = Experience & { _id: Types.ObjectId };
+
+export interface NewExperienceInput {
+  title: string;
+  period: string;
+  summary: string;
+}
 type ClueRecord = Clue & { _id: Types.ObjectId };
 type FactRecord = Fact & { _id: Types.ObjectId };
 
@@ -39,13 +45,15 @@ export class ExperiencesService {
     @InjectModel(Fact.name) private readonly facts: Model<Fact>,
   ) {}
 
-  async create(userId: string, input: ExperienceInput): Promise<ExperienceDto> {
-    const created = await this.experiences.create({
-      userId: new Types.ObjectId(userId),
-      title: input.title,
-      period: input.period,
-    });
-    return this.assemble(created.toObject());
+  // 이력서 초안 확정이 부른다(명세 10). 받은 순서대로 만들어 돌려줘야 사용자가 고른 순서와 응답이 맞는다.
+  // 새 경험은 단서·사실·대화가 없고 itemStatus는 스키마 기본값(모두 null)이다.
+  async createMany(userId: string, inputs: NewExperienceInput[]): Promise<ExperienceDto[]> {
+    const owner = new Types.ObjectId(userId);
+    const created = await this.experiences.insertMany(
+      inputs.map((input) => ({ userId: owner, title: input.title, period: input.period, summary: input.summary })),
+      { ordered: true },
+    );
+    return Promise.all(created.map((doc) => this.assemble(doc.toObject())));
   }
 
   // 토큰 사용자의 것만, 최근 수정순(R1·R6). 같은 시각이면 _id로 순서를 고정해 목록이 흔들리지 않게 한다.
