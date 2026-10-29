@@ -72,6 +72,12 @@ if (cmd === 'load') {
   // fix 전에 스냅샷 저장(confirm이 diff 기준으로 씀)
   const l = load(); const c = l.claims.find((x) => x.id === a2);
   c.snapshot = git('rev-parse HEAD'); save(l); console.log(c.snapshot);
+} else if (cmd === 'reset') {
+  // 도구 문제로 막힌 주장을 처음부터(todo, fixCount 0) 다시 검증한다
+  const l = load(); const c = l.claims.find((x) => x.id === a1);
+  c.status = 'todo'; c.fixCount = 0; c.snapshot = null; save(l);
+  if (fs.existsSync(path.join(here, 'BLOCKED.md'))) fs.unlinkSync(path.join(here, 'BLOCKED.md'));
+  console.log(`${a1} reset to todo`);
 } else if (cmd === 'unblock') {
   const l = load(); const c = l.claims.find((x) => x.id === a1);
   c.status = 'fail'; c.fixCount = 0; save(l);
@@ -82,6 +88,6 @@ if (cmd === 'load') {
 } else if (cmd === 'count') {
   console.log(load().claims.length);
 } else {
-  console.error('usage: check.mjs load <nn> | next | before fix <C> | after <role> <C> | status | unblock <C> | count');
+  console.error('usage: check.mjs load <nn> | next | before fix <C> | after <role> <C> | status | unblock <C> | reset <C> | count');
   process.exit(2);
 }
