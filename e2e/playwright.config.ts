@@ -7,9 +7,9 @@ import { E2E_BASE_URL } from "./env"
  * (globalSetup·storageState·retries·route·viewport 변경 등)은 주최 측 실행에는 적용되지 않는다. 로그인·데이터 준비는 spec 안에서 한다.
  */
 export default defineConfig({
-  testDir: "./scenarios",
-  // docs/scenarios.yaml의 id와 같은 이름(S1.spec.ts, S2.spec.ts…)만 실행한다.
-  testMatch: /[\\/]S[1-9]\d*\.spec\.ts$/,
+  testDir: ".",
+  // docs/scenarios.yaml의 id와 같은 이름(S1.spec.ts…)과 추가 확인용 auth/*.spec.ts를 실행한다. 주최 측 채점은 S*만 쓴다.
+  testMatch: /[\\/](scenarios[\\/]S[1-9]\d*|auth[\\/][\w-]+)\.spec\.ts$/,
   // 흐름들이 같은 DB를 쓰므로 하나씩 순서대로 돈다.
   workers: 1,
   retries: 0,
