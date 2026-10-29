@@ -1,6 +1,9 @@
 import { Controller, Get, Header } from '@nestjs/common';
+import { Public } from '../auth/public.decorator';
 
 // 주최 측 검사가 배포 버전을 확인하는 공개 경로: 인증 없이, 캐시 없이, RELEASE_ID만 돌려준다.
+// 전역 JWT 가드가 막지 않도록 @Public()을 붙인다.
+@Public()
 @Controller('__health')
 export class HealthController {
   @Get()
