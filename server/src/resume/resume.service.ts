@@ -3,7 +3,9 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { AiService } from '../ai/ai.service';
 import { parseObjectIdOr404 } from '../common/ownership';
+import { ExperienceDto } from '../experiences/experience.dto';
 import { Experience } from '../experiences/experience.schema';
+import { ExperiencesService } from '../experiences/experiences.service';
 import { buildResumeSplitInput, RESUME_SPLIT_SYSTEM, resumeSplitSchema } from './prompts';
 import { ActivityDraft, DraftOrigin, Resume } from './resume.schema';
 import { DraftInput } from './resume.validation';
@@ -57,6 +59,8 @@ export class ResumeService {
     @InjectModel(Resume.name) private readonly resumes: Model<Resume>,
     @InjectModel(Experience.name) private readonly experiences: Model<Experience>,
     private readonly ai: AiService,
+    // 확정 경험을 경험 API와 같은 모양으로 만들고 돌려주려고 경험 서비스를 쓴다.
+    private readonly experienceCards: ExperiencesService,
   ) {}
 
   // 붙여넣은 글을 AI로 활동으로 나눠 새 활동만 ai 초안으로 더한다(api.md 4절 POST /api/resume).
@@ -137,6 +141,38 @@ export class ResumeService {
     const draft = doc?.drafts.find((d) => d._id.equals(oid));
     if (!draft) throw draftNotFound();
     return toDraftDto(draft);
+  }
+
+  // 고른 초안을 요청 순서대로 경험으로 만들고 초안 목록에서 뺀다(api.md 4절, 명세 10).
+  // 모든 id가 내 문서에 있을 때만 한 번의 조건부 $pull로 빼므로, 하나라도 없거나 남의 것이면 아무것도 바뀌지 않고 404이며
+  // 같은 초안을 동시에 두 번 확정해도 한쪽만 성공해 같은 경험이 둘 생기지 않는다.
+  async confirmDrafts(userId: string, draftIds: string[]): Promise<ExperienceDto[]> {
+    const parsed = draftIds.map(parseObjectIdOr404);
+    // 같은 id를 두 번 보내도 경험은 하나만 만든다(처음 나온 자리의 순서를 따른다).
+    const oids = parsed.filter((oid, i) => parsed.findIndex((other) => other.equals(oid)) === i);
+    const owner = new Types.ObjectId(userId);
+
+    const before = await this.resumes
+      .findOneAndUpdate(
+        { userId: owner, 'drafts._id': { $all: oids } },
+        { $pull: { drafts: { _id: { $in: oids } } } },
+        { returnDocument: 'before' },
+      )
+      .lean<ResumeRecord>();
+    if (!before) throw draftNotFound();
+
+    const byId = new Map(before.drafts.map((d) => [String(d._id), d]));
+    const picked = oids.map((oid) => byId.get(String(oid))).filter((d): d is DraftRecord => !!d);
+    try {
+      return await this.experienceCards.createMany(
+        userId,
+        picked.map((d) => ({ title: d.title, period: d.period ?? '', summary: d.summary ?? '' })),
+      );
+    } catch (err) {
+      // 경험을 만들지 못했으면 뺀 초안을 되돌려 사용자가 고른 활동을 잃지 않고 다시 시도할 수 있게 한다.
+      await this.resumes.updateOne({ userId: owner }, { $push: { drafts: { $each: picked } } });
+      throw err;
+    }
   }
 
   async deleteDraft(userId: string, draftId: string): Promise<void> {

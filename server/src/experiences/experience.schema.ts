@@ -22,8 +22,13 @@ export class Experience {
   @Prop({ required: true })
   title!: string;
 
-  @Prop({ required: true })
+  // 이력서 초안의 시기는 모를 수 있다(api.md 2절 "모르면 빈 문자열"). required는 빈 문자열을 거부하므로 기본값으로 둔다.
+  @Prop({ type: String, default: '' })
   period!: string;
+
+  // R2: 이력서에서 온 활동 내용. R3 대화 질문의 바탕이라 확정 때 초안 값을 그대로 옮긴다(api.md 2절).
+  @Prop({ type: String, default: '' })
+  summary!: string;
 
   @Prop({
     type: Object.fromEntries(

@@ -27,6 +27,7 @@ export interface ExperienceDto {
   id: string;
   title: string;
   period: string;
+  summary: string;
   clues: ClueDto[];
   itemStatus: Record<Item, ItemStatus>;
   card: Record<Item, FactDto[]>;
@@ -89,7 +90,9 @@ export function toExperienceDto(exp: ExperienceRecord, related: ExperienceRelate
   return {
     id: String(exp._id),
     title: exp.title,
-    period: exp.period,
+    period: exp.period ?? '',
+    // summary 칸이 생기기 전 문서도 빈 문자열로 내보내 프런트가 null 처리 없이 그린다.
+    summary: exp.summary ?? '',
     clues: related.clues,
     itemStatus: Object.fromEntries(
       ITEMS.map((item) => [item, exp.itemStatus?.[item] ?? null]),

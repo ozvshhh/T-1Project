@@ -11,6 +11,7 @@ import { AiService } from '../ai/ai.service';
 import { FakeAiService } from '../ai/fake-ai.service';
 import { AuthModule } from '../auth/auth.module';
 import { AllExceptionsFilter } from '../common/http-exception.filter';
+import { ExperiencesModule } from '../experiences/experiences.module';
 import { UsersModule } from '../users/users.module';
 import { ResumeModule } from './resume.module';
 
@@ -437,5 +438,218 @@ describe('C10-2 POST /api/resume (AI 활동 나누기)', () => {
   it('requests without a token are 401', async () => {
     expect((await http().post('/api/resume').send({ text: '글' })).status).toBe(401);
     expect(fake.calls).toHaveLength(0);
+  });
+});
+
+interface ExperienceBody {
+  id: string;
+  title: string;
+  period: string;
+  summary: string;
+  clues: unknown[];
+  itemStatus: Record<string, unknown>;
+  card: Record<string, unknown[]>;
+  candidates: unknown[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+const ITEMS = ['situation', 'role', 'action', 'result', 'meaning'];
+
+// 경험은 이력서 초안을 확정해서만 생긴다(명세 10). 순서가 바뀌거나 일부만 만들어지면 사용자가 고른 활동과
+// 경험 목록이 어긋나고, 남의 초안이 섞여도 만들어지면 계정 분리(R1)가 깨진다.
+describe('C10-3 POST /api/resume/drafts/confirm', () => {
+  const savedSecret = process.env.JWT_SECRET;
+  let mongod: MongoMemoryServer;
+  let app: INestApplication;
+  let connection: Connection;
+  // 확정은 AI를 부르지 않는다. 호출 기록으로 0회를 확인한다.
+  const fake = new FakeAiService();
+  const http = () => request(app.getHttpServer() as Server);
+  const auth = (token: string) => ({ Authorization: `Bearer ${token}` });
+
+  async function signup(email: string): Promise<string> {
+    const res = await http().post('/api/auth/signup').send({ email, password: 'pass-1234' }).expect(201);
+    return (res.body as { token: string }).token;
+  }
+
+  async function draft(token: string, body: object): Promise<DraftBody> {
+    const res = await http().post('/api/resume/drafts').set(auth(token)).send(body).expect(201);
+    return (res.body as { draft: DraftBody }).draft;
+  }
+
+  const confirm = (token: string, body: unknown) =>
+    http().post('/api/resume/drafts/confirm').set(auth(token)).send(body as object);
+
+  const getResume = async (token: string): Promise<ResumeBody> => {
+    const res = await http().get('/api/resume').set(auth(token)).expect(200);
+    return (res.body as { resume: ResumeBody }).resume;
+  };
+
+  const listExperiences = async (token: string): Promise<ExperienceBody[]> => {
+    const res = await http().get('/api/experiences').set(auth(token)).expect(200);
+    return (res.body as { experiences: ExperienceBody[] }).experiences;
+  };
+
+  let a: string;
+  let b: string;
+
+  beforeAll(async () => {
+    process.env.JWT_SECRET = 'test-secret';
+    mongod = await MongoMemoryServer.create();
+    // 확정 경험이 경험 API에 보이는지까지 보려고 ExperiencesModule도 함께 띄운다.
+    const moduleRef = await Test.createTestingModule({
+      imports: [
+        MongooseModule.forRoot(mongod.getUri(), { runtimeAdapters: { os } }),
+        UsersModule,
+        AuthModule,
+        AiModule,
+        ResumeModule,
+        ExperiencesModule,
+      ],
+    })
+      .overrideProvider(AiService)
+      .useValue(fake)
+      .compile();
+    app = moduleRef.createNestApplication({ logger: false });
+    app.setGlobalPrefix('api', { exclude: ['__health'] });
+    app.useGlobalFilters(new AllExceptionsFilter());
+    await app.init();
+    connection = app.get<Connection>(getConnectionToken());
+    await connection.model('User').syncIndexes();
+    await connection.model('Resume').syncIndexes();
+  }, 120_000);
+
+  beforeEach(async () => {
+    fake.reset();
+    a = await signup('a@example.com');
+    b = await signup('b@example.com');
+  });
+
+  afterEach(async () => {
+    expect(fake.calls).toHaveLength(0);
+    await connection.collection('users').deleteMany({});
+    await connection.collection('resumes').deleteMany({});
+    await connection.collection('experiences').deleteMany({});
+  });
+
+  afterAll(async () => {
+    await app?.close();
+    await mongod?.stop();
+    if (savedSecret === undefined) delete process.env.JWT_SECRET;
+    else process.env.JWT_SECRET = savedSecret;
+  });
+
+  // 확정 경험은 초안 값을 그대로 이어받고 단서·사실·대화 없이 시작해야 R3 대화가 이력서 내용에서 출발한다.
+  it('creates experiences in request order from draft values and removes those drafts', async () => {
+    const A = await draft(a, { title: 'A활동', period: '2024년', summary: 'A 줄' });
+    const B = await draft(a, { title: 'B활동', period: '2023년', summary: 'B 줄' });
+    const C = await draft(a, { title: 'C활동', summary: 'C 줄' });
+
+    const res = await confirm(a, { draftIds: [C.id, A.id] });
+    expect(res.status).toBe(201);
+    const body = res.body as { experiences: ExperienceBody[] };
+    expect(Object.keys(body)).toEqual(['experiences']);
+    expect(body.experiences.map((e) => [e.title, e.period, e.summary])).toEqual([
+      ['C활동', '', 'C 줄'],
+      ['A활동', '2024년', 'A 줄'],
+    ]);
+    for (const exp of body.experiences) {
+      expect(Object.keys(exp).sort()).toEqual(
+        ['candidates', 'card', 'clues', 'createdAt', 'id', 'itemStatus', 'period', 'summary', 'title', 'updatedAt'].sort(),
+      );
+      expect(exp.id).toMatch(/^[0-9a-f]{24}$/);
+      expect(exp.clues).toEqual([]);
+      expect(exp.card).toEqual(Object.fromEntries(ITEMS.map((i) => [i, []])));
+      expect(exp.candidates).toEqual([]);
+      expect(exp.itemStatus).toEqual(Object.fromEntries(ITEMS.map((i) => [i, null])));
+    }
+
+    expect((await getResume(a)).drafts).toEqual([B]);
+
+    // 만든 경험은 목록·상세에 summary와 함께 보인다.
+    const list = await listExperiences(a);
+    expect(list.map((e) => e.id).sort()).toEqual(body.experiences.map((e) => e.id).sort());
+    for (const exp of body.experiences) {
+      expect(list.find((e) => e.id === exp.id)).toEqual(exp);
+      const detail = await http().get(`/api/experiences/${exp.id}`).set(auth(a)).expect(200);
+      expect((detail.body as { experience: ExperienceBody }).experience).toEqual(exp);
+    }
+
+    // PATCH 응답에도 summary가 남아야 프런트가 고친 뒤 이력서 내용을 잃지 않는다.
+    const patched = await http()
+      .patch(`/api/experiences/${body.experiences[1].id}`)
+      .set(auth(a))
+      .send({ title: 'A활동(수정)' })
+      .expect(200);
+    expect((patched.body as { experience: ExperienceBody }).experience).toMatchObject({
+      title: 'A활동(수정)',
+      summary: 'A 줄',
+    });
+
+    // B의 목록에는 A가 확정한 경험이 보이지 않는다(R1).
+    expect(await listExperiences(b)).toEqual([]);
+  });
+
+  // 고를 초안이 없거나 형식이 틀리면 아무것도 만들지 않고 400으로 돌려보낸다(api.md 4절 "1개 이상").
+  it.each([
+    ['missing body', {}],
+    ['empty array', { draftIds: [] }],
+    ['string', { draftIds: 'x' }],
+    ['number items', { draftIds: [1] }],
+    ['mixed items', { draftIds: ['0123456789abcdef01234567', null] }],
+  ])('rejects %s with 400 VALIDATION', async (_label, body) => {
+    const A = await draft(a, { title: 'A활동' });
+    const res = await confirm(a, body);
+    expect(res.status).toBe(400);
+    expect((res.body as ErrorBody).error.code).toBe('VALIDATION');
+    expect((res.body as ErrorBody).error.details?.map((d) => d.field)).toContain('draftIds');
+    expect((await getResume(a)).drafts).toEqual([A]);
+    expect(await listExperiences(a)).toEqual([]);
+  });
+
+  // 하나라도 내 초안이 아니면 전부 막아야 일부만 만들어져 다시 고를 수 없는 상태가 되지 않고, 남의 초안도 쓰이지 않는다(R1).
+  it('404s and changes nothing when a missing, malformed or other account draft is mixed in', async () => {
+    const A = await draft(a, { title: 'A활동' });
+    const other = await draft(b, { title: 'B활동' });
+
+    for (const ids of [
+      [A.id, '0123456789abcdef01234567'],
+      [A.id, 'bad-id'],
+      [A.id, other.id],
+    ]) {
+      const res = await confirm(a, { draftIds: ids });
+      expect(res.status).toBe(404);
+      expect((res.body as ErrorBody).error.code).toBe('NOT_FOUND');
+      expect((await getResume(a)).drafts).toEqual([A]);
+      expect(await listExperiences(a)).toEqual([]);
+    }
+    expect((await getResume(b)).drafts).toEqual([other]);
+    expect(await listExperiences(b)).toEqual([]);
+
+    // 이력서 문서가 아직 없는 계정도 같은 404다.
+    const c = await signup('c@example.com');
+    expect((await confirm(c, { draftIds: [A.id] })).status).toBe(404);
+    expect((await getResume(a)).drafts).toEqual([A]);
+  });
+
+  // 확정한 초안은 목록에서 빠지므로 다시 확정하면 404: 같은 경험이 두 번 생기지 않는다.
+  it('a confirmed draft cannot be confirmed again', async () => {
+    const A = await draft(a, { title: 'A활동' });
+    expect((await confirm(a, { draftIds: [A.id] })).status).toBe(201);
+    expect((await confirm(a, { draftIds: [A.id] })).status).toBe(404);
+    expect(await listExperiences(a)).toHaveLength(1);
+  });
+
+  // 경험은 초안 확정으로만 만든다(학생 결정 2026-10-30): 따로 만드는 경로가 남으면 이력서를 거치지 않은 경험이 생긴다.
+  it('POST /api/experiences no longer exists (404)', async () => {
+    const res = await http().post('/api/experiences').set(auth(a)).send({ title: '축제', period: '2025년' });
+    expect(res.status).toBe(404);
+    expect(await listExperiences(a)).toEqual([]);
+  });
+
+  // 로그인 전에는 경험을 만들 수 없다(C3).
+  it('requires a token', async () => {
+    expect((await http().post('/api/resume/drafts/confirm').send({ draftIds: ['x'] })).status).toBe(401);
   });
 });

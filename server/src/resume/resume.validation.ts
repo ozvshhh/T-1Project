@@ -10,7 +10,7 @@ export interface DraftInput {
 type DraftField = keyof DraftInput;
 
 interface FieldError {
-  field: DraftField | 'text';
+  field: DraftField | 'text' | 'draftIds';
   reason: string;
 }
 
@@ -71,6 +71,17 @@ export function validatePasteResume(body: unknown): string {
     throwIfAny([{ field: 'text', reason: '이력서 글을 입력해 주세요.' }]);
   }
   return obj.text as string;
+}
+
+// POST /api/resume/drafts/confirm: 문자열 id 1개 이상(api.md 4절). 형식이 틀리면 DB를 보기 전에 400이라
+// 400 여부가 초안 존재와 무관하다. id 형식(ObjectId)은 여기서 보지 않는다: 잘못된 id는 없는 초안과 같은 404다.
+export function validateConfirmDrafts(body: unknown): string[] {
+  const obj = asObject(body);
+  const ids = obj.draftIds;
+  if (!Array.isArray(ids) || ids.length === 0 || !ids.every((id) => typeof id === 'string')) {
+    throwIfAny([{ field: 'draftIds', reason: '경험으로 만들 활동을 하나 이상 골라 주세요.' }]);
+  }
+  return ids as string[];
 }
 
 // PATCH: 보낸 칸만 고친다. title을 보냈는데 비었으면 400(빈 이름으로 덮어쓰지 않는다).

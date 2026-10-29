@@ -26,7 +26,7 @@ import {
 } from './conversation.service';
 import { validateAnswer } from './conversation.validation';
 import { ClueDto, ExperienceDto, FactDto } from './experience.dto';
-import { validateCreateExperience, validateUpdateExperience } from './experience.validation';
+import { validateUpdateExperience } from './experience.validation';
 import { validateConfirmFact, validateCreateFact, validateUpdateFact } from './fact.validation';
 import { ExperiencesService } from './experiences.service';
 
@@ -48,15 +48,8 @@ export class ExperiencesController {
     private readonly conversation: ConversationService,
   ) {}
 
-  @Post()
-  @HttpCode(HttpStatus.CREATED)
-  async create(
-    @CurrentUser() user: AuthUser,
-    @Body() body: unknown,
-  ): Promise<{ experience: ExperienceDto }> {
-    return { experience: await this.service.create(user.id, validateCreateExperience(body)) };
-  }
-
+  // 경험을 하나씩 따로 만드는 API는 없다(api.md 4절, 학생 결정 2026-10-30): POST /api/experiences는 전역 404.
+  // 경험은 이력서 초안 확정(POST /api/resume/drafts/confirm)에서만 생긴다.
   @Get()
   async list(@CurrentUser() user: AuthUser): Promise<{ experiences: ExperienceDto[] }> {
     return { experiences: await this.service.listByUser(user.id) };

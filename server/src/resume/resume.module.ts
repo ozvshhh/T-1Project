@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { AiModule } from '../ai/ai.module';
 import { Experience, ExperienceSchema } from '../experiences/experience.schema';
+import { ExperiencesModule } from '../experiences/experiences.module';
 import { ResumeController } from './resume.controller';
 import { Resume, ResumeSchema } from './resume.schema';
 import { ResumeService } from './resume.service';
@@ -16,6 +17,8 @@ import { ResumeService } from './resume.service';
     ]),
     // 활동 나누기가 AI를 부른다. 테스트는 AiService를 FakeAiService로 바꿔 끼운다(실제 Gateway 호출 금지).
     AiModule,
+    // 초안 확정이 경험을 만든다(명세 10). 경험 모양·기본값을 한 곳(ExperiencesService)에 둔다.
+    ExperiencesModule,
   ],
   controllers: [ResumeController],
   providers: [ResumeService],

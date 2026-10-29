@@ -1,7 +1,13 @@
 import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post } from '@nestjs/common';
 import { AuthUser, CurrentUser } from '../auth/current-user.decorator';
+import { ExperienceDto } from '../experiences/experience.dto';
 import { ActivityDraftDto, ResumeDto, ResumeService } from './resume.service';
-import { validateCreateDraft, validatePasteResume, validateUpdateDraft } from './resume.validation';
+import {
+  validateConfirmDrafts,
+  validateCreateDraft,
+  validatePasteResume,
+  validateUpdateDraft,
+} from './resume.validation';
 
 // 이력서 API(api.md 4절). @Public()이 없으므로 전역 가드가 토큰을 요구하고, 사용자는 토큰에서만 얻는다.
 // AI는 붙여넣기(POST /api/resume)만 부르고, 초안 직접 추가·수정·삭제는 AI를 부르지 않는다.
@@ -28,6 +34,17 @@ export class ResumeController {
   @HttpCode(HttpStatus.CREATED)
   async addDraft(@CurrentUser() user: AuthUser, @Body() body: unknown): Promise<{ draft: ActivityDraftDto }> {
     return { draft: await this.service.addDraft(user.id, validateCreateDraft(body)) };
+  }
+
+  // 고른 초안을 경험으로 만든다(api.md 4절). 경험이 생기는 유일한 경로다. 검증이 DB 조회보다 먼저다.
+  // POST에는 drafts/:draftId 라우트가 없어 정적 경로 confirm이 다른 라우트와 겹치지 않는다.
+  @Post('drafts/confirm')
+  @HttpCode(HttpStatus.CREATED)
+  async confirmDrafts(
+    @CurrentUser() user: AuthUser,
+    @Body() body: unknown,
+  ): Promise<{ experiences: ExperienceDto[] }> {
+    return { experiences: await this.service.confirmDrafts(user.id, validateConfirmDrafts(body)) };
   }
 
   // 입력 검증을 DB 조회보다 먼저 한다: 400 여부가 초안 존재와 무관해져 남의 초안이 있는지 떠볼 수 없다.
