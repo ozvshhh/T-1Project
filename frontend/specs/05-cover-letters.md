@@ -20,9 +20,11 @@
 `GET /api/cover-letters/:id`.
 
 ### 붙여넣음 (`kind: pasted`)
+
 - 제목, 입력칸 `본문`(바로 고칠 수 있음), 보조 버튼 `저장`(`PATCH /api/cover-letters/:id`, 빈 글이면 `본문을 입력해 주세요.`).
 
 ### 작성함 (`kind: generated`) — R13
+
 - 문항마다:
   - 문항 글, 응답 글
   - `근거 경험 카드`: `usedExperienceIds`의 경험 제목 목록. 카드마다 보조 버튼 `보강하기`(→ `/experiences/:id?returnTo=/cover-letters/:id/items/:itemId`)
@@ -30,6 +32,7 @@
   - 응답이 없는 문항은 점선 행 `아직 만들지 않음`과 보조 버튼 `이 문항 쓰기`(→ I 그 문항)
 
 ### 점검 (cream 블록) — R9
+
 - 주 버튼 `제출 전 점검 시작` → `POST /api/cover-letters/:id/checks` → `/checks/:checkId`. AI 호출 규칙 적용.
 - `지난 점검`: `GET /api/cover-letters/:id/checks`(최신순). 행마다 만든 시각, `끝난 문장 N / 전체 M`, `stale`이면 `오래됨`. 누르면 `/checks/:checkId`.
 - 저장 버튼 근처 안내: `자소서를 고치면 지난 점검은 오래됨으로 바뀌어요.`

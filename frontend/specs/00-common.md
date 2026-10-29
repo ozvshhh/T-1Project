@@ -4,26 +4,26 @@
 
 ## 라우트
 
-| 주소 | 화면 | 로그인 | 자소서 잠금 적용 |
-| --- | --- | --- | --- |
-| `/` | A 소개 | 불필요(로그인 상태면 `/cover-letters`로) | - |
-| `/signup`, `/login` | B 가입·로그인 | 불필요(로그인 상태면 `/cover-letters`로) | - |
-| `/cover-letters` | C 홈 | 필요 | 화면 안에서 잠금 안내 |
-| `/experiences` | D 경험 목록 | 필요 | - |
-| `/experiences/new` | E 경험 등록 | 필요 | - |
-| `/experiences/:id` | F 경험 상세 | 필요 | - |
-| `/cover-letters/paste` | G 붙여넣기 | 필요 | 적용 |
-| `/cover-letters/new` | H 작성 시작 | 필요 | 적용 |
-| `/cover-letters/:id/items/:itemId` | I 문항별 작성 | 필요 | 적용 |
-| `/cover-letters/:id` | J 자소서 상세 | 필요 | 적용 |
-| `/checks/:checkId` | K 제출 전 점검 | 필요 | 적용 |
-| `*` | L 없는 주소 | - | - |
+| 주소                               | 화면           | 로그인                                   | 자소서 잠금 적용      |
+| ---------------------------------- | -------------- | ---------------------------------------- | --------------------- |
+| `/`                                | A 소개         | 불필요(로그인 상태면 `/cover-letters`로) | -                     |
+| `/signup`, `/login`                | B 가입·로그인  | 불필요(로그인 상태면 `/cover-letters`로) | -                     |
+| `/cover-letters`                   | C 홈           | 필요                                     | 화면 안에서 잠금 안내 |
+| `/experiences`                     | D 경험 목록    | 필요                                     | -                     |
+| `/experiences/new`                 | E 경험 등록    | 필요                                     | -                     |
+| `/experiences/:id`                 | F 경험 상세    | 필요                                     | -                     |
+| `/cover-letters/paste`             | G 붙여넣기     | 필요                                     | 적용                  |
+| `/cover-letters/new`               | H 작성 시작    | 필요                                     | 적용                  |
+| `/cover-letters/:id/items/:itemId` | I 문항별 작성  | 필요                                     | 적용                  |
+| `/cover-letters/:id`               | J 자소서 상세  | 필요                                     | 적용                  |
+| `/checks/:checkId`                 | K 제출 전 점검 | 필요                                     | 적용                  |
+| `*`                                | L 없는 주소    | -                                        | -                     |
 
 ## 헤더
 
-| 상태 | 화면 글자 |
-| --- | --- |
-| 로그인 전 | 서비스 이름, `로그인`, `가입하기` |
+| 상태      | 화면 글자                                                                                 |
+| --------- | ----------------------------------------------------------------------------------------- |
+| 로그인 전 | 서비스 이름, `로그인`, `가입하기`                                                         |
 | 로그인 후 | 서비스 이름, 메뉴 `자소서`(→ `/cover-letters`), `경험`(→ `/experiences`), 버튼 `로그아웃` |
 
 - `로그아웃`: localStorage의 토큰을 지우고 `/`로 간다(별도 API 없음).
@@ -47,23 +47,24 @@
 
 ## 상태 표시 (DESIGN.md 5절 "점선 = 아직 안 된 것")
 
-| 값 | 화면 글자 | 모양 |
-| --- | --- | --- |
-| `explained` | `설명됨` | 흰 행 + 초록 체크 |
-| `needs_more` | `추가 확인 필요` | 점선 행 |
-| `unknown` | `모름·경험 없음` | 점선 행 |
-| `null`(경험 항목) | `아직 묻지 않음` | 점선 행 |
-| `pending`(점검 문장) | `대기` | 점선 행 |
-| `in_progress`(점검 문장) | `진행 중` | 점선 행 |
-| 사실 후보 `ai_unverified` | `AI 제안·미확인` | 점선 행 |
-| 확정 사실 `said` / `clue` | `내가 말함` / `자료로 확인` | 흰 행 |
+| 값                        | 화면 글자                   | 모양              |
+| ------------------------- | --------------------------- | ----------------- |
+| `explained`               | `설명됨`                    | 흰 행 + 초록 체크 |
+| `needs_more`              | `추가 확인 필요`            | 점선 행           |
+| `unknown`                 | `모름·경험 없음`            | 점선 행           |
+| `null`(경험 항목)         | `아직 묻지 않음`            | 점선 행           |
+| `pending`(점검 문장)      | `대기`                      | 점선 행           |
+| `in_progress`(점검 문장)  | `진행 중`                   | 점선 행           |
+| 사실 후보 `ai_unverified` | `AI 제안·미확인`            | 점선 행           |
+| 확정 사실 `said` / `clue` | `내가 말함` / `자료로 확인` | 흰 행             |
 
 - 상태는 반드시 글자로도 적는다. 경험 항목 이름은 `상황`, `역할`, `행동`, `결과`, `의의`.
 
 ## 단계 색 (학생 답 2026-10-30)
 
-- 경험 = `block-lime`, 자소서 = `block-lilac`, 점검 = `block-cream`. 코럴 CTA는 소개 페이지 끝에만.
+- 경험 = `block-lime`, 자소서 = `block-lilac`, 점검 = `block-cream`(코드에서는 Tailwind 색 `bg-lime`·`bg-lilac`·`bg-cream`, `src/index.css`의 `--color-*`). 코럴 CTA는 소개 페이지 끝에만(`bg-coral`).
 - 한 화면에 검정 주 버튼은 하나.
+- 스타일은 이미 있는 `src/index.css`의 클래스를 재사용한다: `wrap`, `block-card`, `inner-card`, `row`, `row-pending`(점선 행), `row-select`, `btn`·`btn-primary`·`btn-secondary`·`btn-coral`·`btn-sm`, `field`·`field-error`, `label`, `card-title`, `h1`·`h2`·`display`, `meta`, `skeleton`. 새 색·모서리 값은 만들지 않는다(DESIGN.md).
 
 ## L 없는 주소 `*`
 

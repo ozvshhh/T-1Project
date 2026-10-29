@@ -1,47 +1,204 @@
-// 백엔드가 붙기 전까지 쓰는 목 데이터. docs/api.md 10절 시드와 같은 모양으로 시작한다.
+// 백엔드가 붙기 전까지 쓰는 목 데이터. 모양은 docs/api.md 2절, 시드는 specs/mock-data.md 「시드」.
 // 새로고침해도 남도록 localStorage에 둔다(실제 서버의 DB 역할).
 import type {
+  Check,
+  CheckSentence,
   CoverLetter,
-  EndReason,
-  InterviewSession,
-  MainQuestion,
-  Question,
-  Result,
-  Resume,
-  ResumeTemplateItem,
+  Experience,
+  Fact,
+  Item,
+  ItemStatusMap,
+  JudgeResult,
+  Message,
   User,
 } from '@/api/types'
 
-export const SEED_USER = { email: 'seed@t1.test', password: 'seedpass1234' }
+export const SEED_USER = { email: 'seeker@example.com', password: 'loopthon-2026' }
 
-export const TEMPLATE: ResumeTemplateItem[] = [
-  { key: 'intro_1min', label: '1분 자기소개' },
-  { key: 'job_success', label: '직무 관련 성공경험' },
-  { key: 'job_preparation', label: '직무를 위해 준비한 사항' },
-  { key: 'motivation', label: '지원동기' },
-  { key: 'aspiration', label: '입사 후 포부' },
-  { key: 'personality', label: '성격의 장단점' },
-  { key: 'crisis', label: '위기 극복 경험' },
-  { key: 'growth', label: '성장과정' },
-  { key: 'teamwork', label: '팀워크 및 협업경험' },
-]
+export const ITEMS: Item[] = ['situation', 'role', 'action', 'result', 'meaning']
 
 type StoredUser = User & { password: string }
-type StoredCoverLetter = CoverLetter & { userId: string }
-type StoredInterview = InterviewSession & { userId: string; result: Result | null }
+/** 저장용 경험: 응답에는 userId·messages를 빼고 내보낸다. */
+export type StoredExperience = Experience & { userId: string; messages: Message[] }
+export type StoredCoverLetter = CoverLetter & { userId: string }
+/** 저장용 점검 문장: 판정 대상 기준·후보 항목·후보 경험은 목 판정에만 쓰고 응답에는 뺀다. */
+export type StoredCheckSentence = CheckSentence & {
+  criteria: JudgeResult['id'][]
+  factItem: Item
+  experienceId: string | null
+}
+/** 저장용 점검: 확정하거나 버린 후보 id를 남겨, 다시 오면 409로 알린다. */
+export type StoredCheck = Omit<Check, 'sentences'> & {
+  userId: string
+  sentences: StoredCheckSentence[]
+  resolvedCandidateIds: string[]
+}
 
 type Db = {
   users: StoredUser[]
-  sessionUserId: string | null
-  resumes: Record<string, Resume>
+  experiences: StoredExperience[]
   coverLetters: StoredCoverLetter[]
-  interviews: StoredInterview[]
+  checks: StoredCheck[]
   seq: number
 }
 
-const STORAGE_KEY = 't1-mock-db'
-// 처음 쓸 때 만든다(아래 시드 상수가 먼저 준비돼야 해서).
+// 모양이 바뀌면 키를 올려 예전 저장본을 버린다.
+const STORAGE_KEY = 't1-mock-db-v3'
+// 처음 쓸 때 만든다.
 let db: Db | null = null
+// 단서 파일은 보관만 한다. localStorage에 넣기엔 커서 메모리에만 두고, 새로고침하면 사라진다.
+const files = new Map<string, File>()
+
+export const emptyStatus = (): ItemStatusMap => ({
+  situation: null,
+  role: null,
+  action: null,
+  result: null,
+  meaning: null,
+})
+
+export const emptyCard = (): Record<Item, Fact[]> => ({
+  situation: [],
+  role: [],
+  action: [],
+  result: [],
+  meaning: [],
+})
+
+/** 경험 대화에서 항목마다 묻는 고정 질문(mock-data.md 「경험 대화」). */
+export const ITEM_QUESTIONS: Record<Item, string> = {
+  situation: '이 경험에서 해결하려던 문제는 무엇이었나요?',
+  role: '그때 본인이 맡은 역할은 무엇이었나요?',
+  action: '구체적으로 어떤 행동을 했나요?',
+  result: '결과는 어땠나요? 직접 확인한 것만 말해 주세요.',
+  meaning: '이 경험이 지금 지원에 어떤 의미가 있나요?',
+}
+
+function seed(): Db {
+  const userId = 'u1'
+  const at = (day: number, minute = 0) => new Date(Date.UTC(2026, 9, day, 9, minute)).toISOString()
+
+  const fact = (
+    id: string,
+    item: Item,
+    text: string,
+    origin: Fact['origin'],
+    createdAt: string,
+  ): Fact => ({
+    id,
+    item,
+    text,
+    status: 'confirmed',
+    source: 'said',
+    clueId: null,
+    origin,
+    createdAt,
+  })
+
+  const capstoneFacts: [Item, string][] = [
+    ['situation', '학과 공지가 홈페이지에만 올라와 학생들이 신청 마감을 자주 놓쳤다'],
+    ['role', '4명 팀에서 백엔드와 공지 크롤러를 맡았다. 팀장은 다른 팀원이었다'],
+    ['action', '공지 게시판을 10분마다 확인해 새 글이 올라오면 앱 푸시를 보내는 크롤러를 만들었다'],
+    [
+      'result',
+      '학과 단톡방에 공유해 한 학기 동안 시험 운영했고, 공지를 놓쳤다는 말이 줄었다는 반응을 들었다. 사용자 수나 확인율은 따로 재지 않았다',
+    ],
+  ]
+  const capstoneCard = emptyCard()
+  const capstoneMessages: Message[] = []
+  capstoneFacts.forEach(([item, text], i) => {
+    capstoneMessages.push({ role: 'ai', text: ITEM_QUESTIONS[item], createdAt: at(20, i * 2) })
+    capstoneMessages.push({ role: 'user', text, createdAt: at(20, i * 2 + 1) })
+    capstoneCard[item].push(
+      fact(`seed-fact-c${i + 1}`, item, text, 'conversation', at(20, i * 2 + 1)),
+    )
+  })
+  capstoneMessages.push({ role: 'ai', text: ITEM_QUESTIONS.meaning, createdAt: at(20, 8) })
+
+  const capstone: StoredExperience = {
+    id: 'seed-exp-capstone',
+    userId,
+    title: '캡스톤디자인 학과 공지 알림 앱',
+    period: '2025년 1학기',
+    clues: [
+      {
+        id: 'seed-clue-c1',
+        type: 'text',
+        description: null,
+        text: '발표 자료 마지막 장: 팀원 4명 역할 분담표 — 나는 백엔드·공지 크롤러',
+        fileName: null,
+        createdAt: at(20),
+      },
+    ],
+    itemStatus: {
+      situation: 'explained',
+      role: 'explained',
+      action: 'explained',
+      result: 'needs_more',
+      meaning: null,
+    },
+    card: capstoneCard,
+    candidates: [
+      {
+        id: 'seed-fact-c5',
+        item: 'meaning',
+        text: '반복되는 불편을 자동화로 줄이는 데 관심이 생겼다',
+        status: 'candidate',
+        source: 'ai_unverified',
+        clueId: null,
+        origin: 'conversation',
+        createdAt: at(20, 7),
+      },
+    ],
+    messages: capstoneMessages,
+    createdAt: at(20),
+    updatedAt: at(20, 8),
+  }
+
+  const hackathonCard = emptyCard()
+  const hackathonFacts: [Item, string][] = [
+    ['role', '5명 팀의 팀장으로 기능 범위를 정하고 발표를 맡았다'],
+    ['action', '회비 입금 내역을 엑셀로 받아 정산 화면에 올리는 기능을 직접 만들었다'],
+    ['result', '48시간 안에 시연까지 마쳤지만 수상은 하지 못했다'],
+  ]
+  hackathonFacts.forEach(([item, text], i) => {
+    hackathonCard[item].push(fact(`seed-fact-h${i + 1}`, item, text, 'manual', at(18, i)))
+  })
+
+  const hackathon: StoredExperience = {
+    id: 'seed-exp-hackathon',
+    userId,
+    title: '교내 해커톤 동아리 회비 정산 웹',
+    period: '2025년 여름',
+    clues: [],
+    itemStatus: emptyStatus(),
+    card: hackathonCard,
+    candidates: [],
+    messages: [],
+    createdAt: at(18),
+    updatedAt: at(18, 2),
+  }
+
+  const coverLetter: StoredCoverLetter = {
+    id: 'seed-cl-1',
+    userId,
+    kind: 'pasted',
+    title: '가나다소프트 백엔드 지원',
+    body: '저는 캡스톤디자인에서 학과 공지 알림 앱을 개발하며 데이터 기반으로 문제를 해결했습니다. 공지 크롤러를 설계해 학생들의 공지 확인율을 40% 높였고, 팀을 주도해 일정 안에 배포를 마쳤습니다. 교내 해커톤에서는 팀장으로서 동아리 회비 정산 서비스를 기획해 수상권에 근접한 성과를 거두었습니다. 이러한 경험을 바탕으로 사용자의 불편을 데이터로 해결하는 백엔드 개발자가 되겠습니다.',
+    target: null,
+    items: [],
+    createdAt: at(22),
+    updatedAt: at(22),
+  }
+
+  return {
+    users: [{ id: userId, ...SEED_USER }],
+    experiences: [capstone, hackathon],
+    coverLetters: [coverLetter],
+    checks: [],
+    seq: 1,
+  }
+}
 
 function load(): Db {
   try {
@@ -51,6 +208,11 @@ function load(): Db {
     // 저장소를 못 쓰면 메모리로만 돈다.
   }
   return seed()
+}
+
+export function getDb(): Db {
+  db ??= load()
+  return db
 }
 
 export function save() {
@@ -63,257 +225,71 @@ export function save() {
 
 export function resetDb() {
   db = seed()
-  save()
-}
-
-export function getDb(): Db {
-  db ??= load()
-  return db
+  files.clear()
+  try {
+    localStorage.removeItem(STORAGE_KEY)
+  } catch {
+    // 위와 같음
+  }
 }
 
 export function newId() {
   const d = getDb()
   d.seq += 1
-  return d.seq.toString(16).padStart(24, '0')
+  return `id${d.seq}`
 }
 
-const now = () => new Date().toISOString()
+export const now = () => new Date().toISOString()
 
-export const INTERVIEWER_LABEL = { practical: '실무 면접관', executive: '임원 면접관' } as const
-
-const SEED_BODY = [
-  '저는 동아리 웹사이트의 로그인 오류를 직접 찾아 고친 경험이 있습니다.',
-  '회원들이 자주 로그아웃된다는 제보를 받고 서버 로그를 하나씩 확인했습니다.',
-  '해커톤에서는 4명과 역할을 나눠 48시간 안에 서비스를 완성했습니다.',
-  '이 경험으로 문제를 끝까지 추적하는 습관을 길렀습니다.',
-].join('\n')
-
-function seed(): Db {
-  const created = '2026-10-28T09:00:00.000Z'
-  const user: StoredUser = {
-    id: '000000000000000000000001',
-    email: SEED_USER.email,
-    password: SEED_USER.password,
-    role: '취준생',
-    createdAt: created,
-  }
-  const resume: Resume = {
-    id: '000000000000000000000002',
-    items: [
-      {
-        key: 'job_success',
-        label: '직무 관련 성공경험',
-        content: '동아리 웹사이트 로그인 오류를 찾아 고쳤다',
-      },
-      {
-        key: 'teamwork',
-        label: '팀워크 및 협업경험',
-        content: '해커톤에서 4명과 역할을 나눠 48시간 안에 완성했다',
-      },
-    ],
-    updatedAt: created,
-  }
-  const coverLetter: StoredCoverLetter = {
-    id: '000000000000000000000003',
-    userId: user.id,
-    title: '시드 자기소개서',
-    body: SEED_BODY,
-    source: 'uploaded',
-    resumeSnapshot: null,
-    createdAt: created,
-    updatedAt: created,
-  }
-
-  const mains = makeMainQuestions(SEED_BODY, '00000000000000000000001')
-  const ask = (m: MainQuestion, at: string): Question => toQuestion(m, `${m.id}q`, at)
-  const interview: StoredInterview = {
-    id: '000000000000000000000004',
-    userId: user.id,
-    coverLetterId: coverLetter.id,
-    coverLetterSnapshot: { title: coverLetter.title, body: coverLetter.body },
-    status: 'finished',
-    startedAt: '2026-10-28T10:00:00.000Z',
-    finishedAt: '2026-10-28T10:06:00.000Z',
-    endReason: 'user_end',
-    usedFallbackQuestions: false,
-    limits: { maxQuestions: 12, maxMinutes: 12, maxFollowUpsPerMain: 2 },
-    mainQuestions: mains,
-    currentQuestion: null,
-    turns: [
-      {
-        question: ask(mains[0], '2026-10-28T10:00:10.000Z'),
-        answer: {
-          id: '00000000000000000000a001',
-          text: '서버 로그에서 세션 만료 시간이 너무 짧게 잡힌 걸 찾아 설정을 고쳤습니다.',
-          inputMode: 'text',
-          answeredAt: '2026-10-28T10:02:00.000Z',
-        },
-        skipped: false,
-        checkState: 'explained',
-      },
-      {
-        question: ask(mains[1], '2026-10-28T10:02:10.000Z'),
-        answer: {
-          id: '00000000000000000000a002',
-          text: '팀에서 프론트엔드를 맡았고, 마감 전날 화면 연결을 끝까지 책임졌습니다.',
-          inputMode: 'text',
-          answeredAt: '2026-10-28T10:05:00.000Z',
-        },
-        skipped: false,
-        checkState: 'needs_more',
-      },
-    ],
-    result: null,
-  }
-  interview.result = buildResult(interview)
-
-  return {
-    users: [user],
-    sessionUserId: null,
-    resumes: { [user.id]: resume },
-    coverLetters: [coverLetter],
-    interviews: [interview],
-    seq: 0x100,
-  }
+export function saveFile(clueId: string, file: File) {
+  files.set(clueId, file)
 }
 
-// ---- 모의면접 진행(실제 서버의 AI 판단을 흉내 낸다) ----
-
-function sentencesOf(body: string) {
-  const parts = body
-    .split(/(?<=[.!?。])\s+|\n+/)
-    .map((s) => s.trim())
-    // 생성 초안의 '[항목 이름]' 머리글 줄은 문장이 아니다.
-    .filter((s) => s.length > 8 && !/^\[.*\]$/.test(s))
-  return parts.length > 0 ? parts : [body.trim()]
+export function getFile(clueId: string) {
+  return files.get(clueId) ?? null
 }
 
-const clip = (s: string, n = 36) => (s.length > n ? `${s.slice(0, n)}…` : s)
-
-export function makeMainQuestions(body: string, idPrefix: string): MainQuestion[] {
-  const s = sentencesOf(body)
-  const pick = (i: number) => s[i % s.length]
-  const drafts: Omit<MainQuestion, 'id' | 'order'>[] = [
-    {
-      interviewer: 'practical',
-      purpose: '본인이 직접 한 행동 확인',
-      basisSentence: pick(0),
-      text: `'${clip(pick(0))}'라고 쓰셨는데, 그때 본인이 직접 한 일은 무엇이었나요?`,
-    },
-    {
-      interviewer: 'practical',
-      purpose: '선택한 이유 확인',
-      basisSentence: pick(1),
-      text: `'${clip(pick(1))}' 과정에서 다른 방법도 있었을 텐데, 왜 그 방법을 골랐나요?`,
-    },
-    {
-      interviewer: 'executive',
-      purpose: '기여도 확인',
-      basisSentence: pick(2),
-      text: `'${clip(pick(2))}' 경험에서 본인을 빼도 결과가 같지 않았을까요?`,
-    },
-    {
-      interviewer: 'executive',
-      purpose: '결과 확인',
-      basisSentence: pick(3),
-      text: `'${clip(pick(3))}'라고 하셨는데, 그 결과는 무엇으로 확인했나요?`,
-    },
-  ]
-  // 순서는 세션을 만들 때 한 번 섞어서 저장한다(F5).
-  const order = [0, 1, 2, 3].sort(() => Math.random() - 0.5)
-  return order.map((d, i) => ({ ...drafts[d], id: `${idPrefix}${i}`, order: i }))
+/** 저장용 경험에서 응답 모양(api.md Experience)만 꺼낸다. */
+export function toExperience({
+  userId: _userId,
+  messages: _messages,
+  ...experience
+}: StoredExperience): Experience {
+  return experience
 }
 
-export function toQuestion(
-  m: MainQuestion,
-  id: string,
-  askedAt = now(),
-  followUp?: string,
-): Question {
-  return {
-    id,
-    kind: followUp ? 'follow_up' : 'main',
-    mainQuestionId: m.id,
-    interviewer: m.interviewer,
-    interviewerLabel: INTERVIEWER_LABEL[m.interviewer],
-    purpose: followUp ? '방금 답변 구체화' : m.purpose,
-    text: followUp ?? m.text,
-    askedAt,
-  }
+/** 저장용 자소서에서 응답 모양(api.md CoverLetter)만 꺼낸다. */
+export function toCoverLetter({ userId: _userId, ...coverLetter }: StoredCoverLetter): CoverLetter {
+  return coverLetter
 }
 
-export function asked(iv: InterviewSession) {
-  return iv.turns.length + (iv.currentQuestion ? 1 : 0)
+/** 저장용 점검 문장에서 응답 모양(api.md CheckSentence)만 꺼낸다. */
+export function toCheckSentence({
+  criteria: _criteria,
+  factItem: _factItem,
+  experienceId: _experienceId,
+  ...sentence
+}: StoredCheckSentence): CheckSentence {
+  return sentence
 }
 
-/** 다음 질문으로 넘기거나 끝낸다. 끝나면 결과를 만든다. */
-export function advance(iv: StoredInterview, followUp?: string) {
-  const current = iv.currentQuestion
-  const mains = [...iv.mainQuestions].sort((a, b) => a.order - b.order)
-  const elapsedMin = (Date.now() - Date.parse(iv.startedAt)) / 60000
-
-  let reason: EndReason | null = null
-  if (iv.turns.length >= iv.limits.maxQuestions) reason = 'question_limit'
-  else if (elapsedMin >= iv.limits.maxMinutes) reason = 'time_limit'
-
-  if (!reason && followUp && current) {
-    const main = mains.find((m) => m.id === current.mainQuestionId)!
-    iv.currentQuestion = toQuestion(main, newId(), now(), followUp)
-    return 'follow_up' as const
-  }
-  if (!reason) {
-    const idx = mains.findIndex((m) => m.id === current?.mainQuestionId)
-    const nextMain = mains[idx + 1]
-    if (nextMain) {
-      iv.currentQuestion = toQuestion(nextMain, newId())
-      return 'next_main' as const
-    }
-    reason = 'all_done'
-  }
-  finish(iv, reason)
-  return 'finished' as const
+/** 저장용 점검에서 응답 모양(api.md Check)만 꺼낸다. */
+export function toCheck({
+  userId: _userId,
+  resolvedCandidateIds: _resolved,
+  sentences,
+  ...check
+}: StoredCheck): Check {
+  return { ...check, sentences: sentences.map(toCheckSentence) }
 }
 
-export function finish(iv: StoredInterview, reason: EndReason) {
-  iv.status = 'finished'
-  iv.endReason = reason
-  iv.finishedAt = now()
-  iv.currentQuestion = null
-  iv.result = buildResult(iv)
+/** 목 토큰: `mock-<userId>`. 실제 서버의 JWT 자리다. */
+export function tokenFor(userId: string) {
+  return `mock-${userId}`
 }
 
-function buildResult(iv: InterviewSession): Result {
-  const answered = iv.turns.filter((t) => t.answer)
-  const fields = ['role', 'reason', 'result'] as const
-  const firstSentence = sentencesOf(iv.coverLetterSnapshot.body)[0]
-  return {
-    interviewId: iv.id,
-    transcript: iv.turns,
-    clarifiedExperiences: answered.slice(0, 3).map((t, i) => ({
-      field: fields[i],
-      text: t.answer!.text,
-      basisAnswerId: t.answer!.id,
-    })),
-    openItems: iv.turns
-      .filter((t) => t.skipped || t.checkState !== 'explained')
-      .slice(0, 3)
-      .map((t) => ({
-        text: t.skipped
-          ? `'${clip(t.question.text, 28)}'에 아직 답하지 않았어요.`
-          : `${t.question.purpose}: 숫자나 결과로 더 구체적으로 말해 보세요.`,
-        basisQuestionId: t.question.id,
-      })),
-    suggestions: firstSentence
-      ? [
-          {
-            id: `${iv.id.slice(0, 20)}s001`,
-            original: firstSentence,
-            proposed: `${firstSentence.replace(/[.。]$/, '')}. ${answered[0]?.answer?.text ?? '이때 제가 맡은 역할과 결과를 구체적으로 적었습니다.'}`,
-            why: '면접 답변에서 새로 설명한 원인과 결과를 문장에 넣으면 기여도가 드러나요.',
-            status: 'pending',
-          },
-        ]
-      : [],
-    resultStatus: 'complete',
-  }
+export function userFromToken(authorization: string | null): StoredUser | null {
+  const match = /^Bearer mock-(.+)$/.exec(authorization ?? '')
+  if (!match) return null
+  return getDb().users.find((u) => u.id === match[1]) ?? null
 }
