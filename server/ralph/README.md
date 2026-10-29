@@ -38,7 +38,7 @@ node server/ralph/check.mjs status         # 현재 상태 표
 | 명세 | 내용 | 주장 수 |
 | --- | --- | --- |
 | 01-skeleton | (완료) NestJS 뼈대·/__health·Mongo·시드 계정 | 8 |
-| 02-one-app | app 하나로 합치기(NestJS가 프런트 정적 파일까지), compose `app`·`db` | 4 |
+| 02-compose | nginx 유지, 시드 계정을 app에도, 서버 3001·`API_UPSTREAM`(Lightsail 대비), 업로드·타임아웃 한도 | 4 |
 | 03-auth | JWT 가입·로그인·me, 전역 가드, 소유자 검사 | 4 |
 | 04-ai | Gateway 호출 모듈, 502 AI_UNAVAILABLE, FakeAi | 3 |
 | 05-experiences | 경험·단서(파일은 Mongo)·직접 쓴 사실 | 3 |

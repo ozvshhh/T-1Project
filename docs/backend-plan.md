@@ -10,17 +10,21 @@
 | --- | --- |
 | main | 1단계(명세 01) 완료: NestJS 뼈대, `/__health`, 전역 예외 필터, Mongo 연결, 시드 계정 1명, CI. compose는 `app`(nginx+프런트) · `server`(NestJS) · `db`(mongo:7) |
 | 문제 1 | 시드 계정이 `server`에만 있다. 주최 측 실행·`scenarios.yml`은 `services.app.environment`에서 읽으므로 **E2E 로그인이 실패한다** |
-| 문제 2 | Lightsail 배포는 컨테이너 하나다. nginx가 `server:3000`으로 넘기는 구조는 배포에서 동작하지 않는다 |
+| 문제 2 | Lightsail에는 compose가 없어 nginx 설정의 `server:3000`을 찾지 못하고, 같은 배포의 컨테이너는 `localhost`를 함께 써서 둘 다 3000이면 겹친다 |
+| 문제 3 | nginx 기본 한도(본문 1MB, 응답 대기 60초)로는 단서 파일 5MB·AI 재시도가 막힌다 |
 | 인증 | api.md가 세션 쿠키 → **JWT(Bearer)** 로 바뀜. 예전 구현은 재사용하지 않고 새로 만든다 |
 | 프런트 | `frontend/` 팀원 랄프 진행 중(MSW 목 API). 화면 글자·라우트·시드는 `frontend/specs/`가 정본 |
 | 보류 | 모의면접·음성·카메라·면접 결과(D1~D9), `interview-engine/`은 이번 범위 밖 |
 
 ## 2. 구조 결정 (Agent 기술 선택 — 바꾸려면 해당 명세만 고친다)
 
-- **app 하나**: NestJS 하나가 3000에서 `/api/*`·`/__health`·프런트 정적 파일을 모두 처리. 루트 `Dockerfile` 3단계(프런트 빌드 → 서버 빌드 → 실행). compose는 `app`·`db`. `server/Dockerfile`·nginx 설정은 지운다. → 명세 02.
-  - 이유: 시드 환경변수가 `app`에 있어야 함, 자원 제한·Lightsail 모두 컨테이너 하나 기준, backend-guide 권장 구조와 같음.
-  - 없는 주소: 라우트 표의 화면 주소는 `index.html` 200, 그 밖은 `index.html` **404**(화면은 「없는 페이지예요」), `/api/없는것`은 404 JSON.
-  - **프런트 팀원에게 알릴 것**: 루트 `Dockerfile`이 바뀐다. `frontend/`는 건드리지 않는다.
+- **nginx 유지**(학생 결정 2026-10-30): compose는 `app`(nginx)·`server`(NestJS)·`db` 그대로. → 명세 02.
+  - 시드 계정을 `app`에도 `server`와 같은 값으로 적는다(채점이 `app`에서 읽음).
+  - 서버는 `PORT`(기본 3001), nginx가 넘길 주소는 `API_UPSTREAM`(compose `http://server:3001`, Lightsail `http://localhost:3001`). 환경 사이 차이는 이 값 하나.
+  - nginx `client_max_body_size 6m`, `proxy_read_timeout 120s`.
+  - 없는 화면 주소는 지금처럼 화면 200 + 「없는 페이지예요」, `/api/없는것`은 404 JSON.
+  - **프런트 팀원에게 알릴 것**: 루트 `Dockerfile`에 `ENV API_UPSTREAM` 한 줄, nginx 템플릿 수정. `frontend/`는 건드리지 않는다.
+  - 대안이었던 「NestJS 하나로 합치기」는 이미지가 하나라 환경 차이가 없지만, 프런트 팀원 파일을 크게 바꿔야 해서 택하지 않음.
 - **DB**: MongoDB 유지(mongoose). 파일 단서는 Mongo 안에 저장(배포 컨테이너에 디스크 없음).
 - **인증**: `@nestjs/jwt`, 전역 가드 + `@Public()`, 남의 자원은 404. 비밀 `JWT_SECRET`(compose에 로컬 리터럴, 비면 무작위 생성 후 기동).
 - **AI**: `AiService.json()` 하나로 Gateway(OpenAI 호환) 호출, 모델 `openai/gpt-6.1-terra`(팀 결정, `AI_MODEL`로 변경 가능), zod 검증, 실패는 모두 `502 AI_UNAVAILABLE`. AI 결과는 믿지 않고 서버가 대조한다(추천 id, 점검 문장, 점검 상태 결정).
@@ -32,7 +36,7 @@
 | 단계 | 명세 | 요구사항 | 주장 | 끝의 증거(사람) | 사람이 먼저 |
 | --- | --- | --- | --- | --- | --- |
 | 1 | `01-skeleton` | — | 8 | (완료) | — |
-| 2 | `02-one-app` | 배포·채점 구조 | 4 (docker 1) | 빈 DB compose에서 `/` HTML, `/__health` 200, `/no-such-page` 404, `app`에 시드 값 | 프런트 팀원에게 Dockerfile 변경 알림 |
+| 2 | `02-compose` | 채점·배포 구조 | 4 (docker 1) | 빈 DB compose에서 `/` HTML, `/__health` 200, `/api/nope` 404, `app`에 시드 값 | 프런트 팀원에게 nginx·Dockerfile 변경 알림 |
 | 3 | `03-auth` | R1, C3 | 4 | 시드 계정 로그인 200·토큰, 토큰 없이 401 | — |
 | 4 | `04-ai` | C2 | 3 | 키 없을 때 502 JSON | — |
 | 5 | `05-experiences` | R2, R5, R6 | 3 | 경험 만들기·단서 파일 올리고 내려받기 | — |
@@ -40,7 +44,7 @@
 | 7 | `07-cover-letters` | R7, R8, R13, C4 | 6 | **실제 AI 1회**: 추천+문항 1개 생성(≤ $0.05) | — |
 | 8 | `08-checks` | R9~R12, C4 | 4 | **실제 AI 1회**: 시드 자소서 점검 시작+답 1번(≤ $0.05) | — |
 | 9 | `09-seed` | S2~S6 선행 데이터 | 2 (docker 1) | 빈 DB 기동 뒤 시드 계정에 경험 2·자소서 1 | 시드 대화 개수 확인(아래 4절) |
-| 10 | (루프 아님) | 배포 | — | Lightsail에 새 이미지, `/__health` releaseId 일치, 대시보드 UP | 배포 DB 결정 |
+| 10 | (루프 아님) | 배포 | — | Lightsail 배포에 컨테이너 2개(nginx 공개 3000 + server 3001, `API_UPSTREAM=http://localhost:3001`), `/__health` releaseId 일치, 대시보드 UP. backend-guide 배포 절 갱신 | 배포 DB 결정 |
 | 11 | (프런트와 함께) | E2E S1~S6 | — | 빈 DB docker에서 6개 흐름 통과, 제출 요건 노란 줄 없음 | 프런트가 실제 API로 전환 |
 
 순서 이유: 2(채점 구조)를 먼저 고쳐야 이후 모든 docker 확인이 실제 채점과 같다. 3·4는 5~8 모두가 쓰는 바탕. 5→6→7→8은 데이터 의존 순서(경험 → 사실 → 자소서 → 점검). 9는 모든 모델이 생긴 뒤.
@@ -67,11 +71,11 @@
 ### 이번에 바꾼 것
 | 바꾼 것 | 이유 |
 | --- | --- |
-| fix에 `git rm` 허용, 루트 `Dockerfile`·`.github/` 수정 허용 | 2단계가 `server/Dockerfile`·nginx 설정을 지우고 루트 Dockerfile을 바꾼다 |
+| fix에 `git rm` 허용, 루트 `Dockerfile`·`.github/` 수정 허용 | 2단계가 루트 Dockerfile·nginx 템플릿을 고친다 |
 | confirm·sweep diff 범위에 `Dockerfile`·`.github` 추가 | 위 변경을 confirm이 못 보던 구멍 |
-| 프롬프트 「읽을 파일」에 명세 「바탕」 문서 추가 | 02는 00-common 라우트표, 09는 mock-data.md가 정본 |
+| 프롬프트 「읽을 파일」에 명세 「바탕」 문서 추가 | 09는 mock-data.md가 정본 |
 | AGENT.md에 JWT·AI 불신·C2 저장 순서·범위 밖·팀원 폴더 금지 표지판 | 새 명세 공통 규칙. 반복마다 명세에 다시 쓰지 않도록 |
-| 명세가 「대체한다」고 이름 댄 기존 테스트만 고칠 수 있음 | 02가 `compose.spec.ts`·`dockerfile.spec.ts`를 구조 변경으로 바꿔야 함(약화 금지 규칙과 충돌 방지) |
+| 명세가 「대체한다」고 이름 댄 기존 테스트만 고칠 수 있음 | 02가 `compose.spec.ts`의 `server:3000`·`SESSION_SECRET` 단언을 바꿔야 함(약화 금지 규칙과 충돌 방지) |
 | 이전 명세 02~07·09 삭제, 새 02~09 작성 | 기획 변경 |
 
 ### 비용·시간 예상
@@ -90,7 +94,7 @@ node server/ralph/check.mjs status
 
 ### PR 단위
 - PR A: 루프 도구·명세·이 계획(지금 커밋). 리뷰 후 main.
-- PR B: 2단계(app 하나로) — 루트 Dockerfile이 바뀌므로 **프런트 팀원 확인 후** 병합. 병합 뒤 main push로 `scenarios` 워크플로가 도는지 본다.
+- PR B: 2단계(nginx 유지 + 채점·배포 맞추기) — 루트 Dockerfile·nginx 템플릿이 바뀌므로 **프런트 팀원 확인 후** 병합. 병합 뒤 main push로 `scenarios` 워크플로가 도는지 본다.
 - PR C: 3~9단계(또는 3~5 / 6~9 둘로).
 
 ## 6. 단계 끝 체크 (사람)
