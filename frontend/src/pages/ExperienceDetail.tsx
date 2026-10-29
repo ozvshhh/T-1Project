@@ -10,6 +10,7 @@ import { ITEM_LABELS, ITEM_ORDER } from '@/lib/cards'
 import { statusKind } from '@/lib/status'
 import { useAiCall } from '@/lib/useAiCall'
 import { useLoad } from '@/lib/useLoad'
+import { CandidatePanel, CardPanel } from '@/pages/FactPanels'
 import NotFound from '@/pages/NotFound'
 
 type ClueKind = 'text' | 'photo' | 'award' | 'document'
@@ -171,6 +172,8 @@ function Detail({
             </div>
             <p className="meta">카드를 고쳐도 상태는 바뀌지 않아요. 다시 대화하면 갱신돼요.</p>
           </StageBlock>
+          <CandidatePanel experience={experience} onChange={setExperience} />
+          <CardPanel experience={experience} onChange={setExperience} />
         </div>
       </div>
     </main>

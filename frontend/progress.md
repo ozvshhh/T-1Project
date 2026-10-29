@@ -29,3 +29,5 @@
   남은 일: 10번 F 경험 상세(clueFailed 안내 표시 포함). 막힌 점 없음(lint 경고는 기존 useLoad.ts 것).
 - [10] ExperienceDetail(F) 신설: 제목·시기 수정, 단서 목록·추가, 대화(자동 시작·보내기·다시 시도), 항목 상태, returnTo, App 라우트 연결, ExperienceDetail.test.tsx 추가.
   막힌 점: 기존 Experiences.test.tsx의 "대화 시작 → 없는 페이지예요" 테스트가 이제 실패함(그 주석이 10번에서 바뀐다고 적음). 규칙상 고치지 않았으니 사람이 상세 화면 확인으로 바꿔야 함. 남은 일: 11번.
+- [11] FactPanels 신설(후보 확정·버리기, 경험 카드 고치기·지우기·직접 추가)을 ExperienceDetail에 연결, FactPanels.test.tsx(S2 흐름 포함) 추가.
+  남은 일: 12번 G 붙여넣기. 막힌 점: 10번에서 적은 Experiences.test.tsx의 "대화 시작 → 없는 페이지예요" 테스트는 그대로(사람이 고쳐야 함).
