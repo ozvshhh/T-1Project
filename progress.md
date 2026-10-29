@@ -6,7 +6,7 @@ Agent가 서비스 저장소 루트의 `progress.md`로 복사해 이어 쓴다(
 
 - 실제 서비스 저장소 폴더: /Users/du_dung/Project/sumtech/T-1Project (안내 키트: ../loopthon-starter)
 - 작업 방식(2026-10-29, junjang859-boop): 기획서는 `problem` 브랜치에서 수정·커밋하고, 학생이 "메인에 반영해줘"라고 할 때만 PR로 main에 머지
-- 현재 단계 / 다음 행동: 2단계 2-C 기능 명세 진행 중(2026-10-29 밤). 역할 분담(학생 결정): 기획(2-A·2-B·근거)은 다른 팀원이 problem 브랜치에서, 백엔드(tgYun783)는 2-C부터 feature/spec-2c 브랜치에서. 학생이 2-B 해법 메모를 고른 해법으로 확인하고 면접 방식은 팀원 설계(docs/interview-design.md, 면접관 2명)로 선택 → solution_paths(chosen 1·rejected 1)·features F1~F8 작성. 다음: 역할 이름·첫 화면·플랫폼·음성 전사 방식 → features 빈칸(F1~F8 주석) → docs/scenarios.yaml → README 구현 설계 → PR main
+- 현재 단계 / 다음 행동: 2단계 2-C 진행 중(2026-10-29 밤, feature/spec-2c, PR #7 draft). 끝난 것: solution_paths, features F1~F9, 역할 `취준생`, 플랫폼 desktop, scenarios.yaml S1~S6(학생 확인), README 구현 설계 초안, 서버 NestJS·DB MongoDB. 남은 학생 답: 구현 우선순위·제외/보류 범위, F3 초안 수정 가능 여부·형식, 첫 화면 이름·한 줄 설명(프런트 팀원), 배포용 MongoDB(Atlas) 계정, 답변 판단 AI 실패 시 동작. 다음: 답 받아 README·features 채움 → PR #7 draft 해제·main 반영 → 학생이 대시보드 화면 확인 → 팀이 넘어가자고 하면 3단계
 - 학생에게 확인할 내용 (한 번에 하나씩):
   - 답 받음(2026-10-29): 1 면접에 집중하는 이유 / 2 experiences E1(질문 내용·한 말·끝나고 한 일은 "그런 경험이 있다고만" 해서 비움) / 3 근본 문제·5 whys / 4 고객(회사 보류 이유, 팀 밖 사례는 "경험이 있었다고만") / 5 감정(팀원 실제 느낌) / 6 지표(이름만 두기로) / 7 현재 대안 A1~A3와 단점(정리본 ⑤⑥)
   - 2-B 때 볼 해법 메모(학생 말 그대로, 2026-10-29): "날것의 소스를 넣으면 이력서와 면접서비스를 제공", "맞춤형 면접 서비스 제공 및 날것의 본인의 스펙에 관련된 소스를 올리면 면접 서비스 제공", 차별점으로 "면접에서 삼인 삼색 보이스 페르소나, 꼬리질문 압박 인터렉션 서비스 제공"
