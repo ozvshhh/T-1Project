@@ -93,4 +93,88 @@ describe('AiService.json', () => {
     await expect(new AiService().json(request)).rejects.toBeInstanceOf(AiUnavailableError);
     expect(fetchMock).not.toHaveBeenCalled();
   });
+
+  // 실패 원인이 무엇이든 하나의 오류로 모아야 전역 필터가 502 하나로 안내하고, 원문·키가 밖으로 새지 않는다.
+  describe('실패 분류와 재시도 (C4-2)', () => {
+    function statusResponse(status: number): Response {
+      return new Response('raw-gateway-body', { status });
+    }
+
+    async function expectUnavailable(): Promise<void> {
+      const err: unknown = await new AiService().json(request).then(
+        () => undefined,
+        (e: unknown) => e,
+      );
+      expect(err).toBeInstanceOf(AiUnavailableError);
+      const message = (err as Error).message;
+      expect(message).not.toContain('test-key');
+      expect(message).not.toContain('raw-gateway-body');
+    }
+
+    // 4xx는 다시 불러도 결과가 같고 비용만 든다: 재시도하지 않는다.
+    it.each([401, 429])('%d 응답 → AiUnavailableError, 호출 1회(재시도 없음)', async (status) => {
+      fetchMock.mockReset().mockImplementation(() => Promise.resolve(statusResponse(status)));
+      await expectUnavailable();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('500 응답이 계속되면 정확히 1회 재시도 후 AiUnavailableError(호출 2회)', async () => {
+      fetchMock.mockReset().mockImplementation(() => Promise.resolve(statusResponse(500)));
+      await expectUnavailable();
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    it('500 뒤 정상 응답이면 재시도 결과를 돌려준다(호출 2회)', async () => {
+      fetchMock
+        .mockReset()
+        .mockResolvedValueOnce(statusResponse(500))
+        .mockResolvedValueOnce(okResponse('{"a":1}'));
+      await expect(new AiService().json(request)).resolves.toEqual({ a: 1 });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    it.each([
+      ['본문이 JSON이 아님', () => new Response('raw-gateway-body', { status: 200 })],
+      ['content가 JSON이 아님', () => okResponse('raw-gateway-body')],
+      ['스키마 불일치', () => okResponse('{"a":"raw-gateway-body"}')],
+    ])('형식 오류(%s) → 1회 재시도 후 AiUnavailableError(호출 2회)', async (_label, make) => {
+      fetchMock.mockReset().mockImplementation(() => Promise.resolve(make()));
+      await expectUnavailable();
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    it('첫 응답만 형식 오류이고 다음이 정상이면 성공(호출 2회)', async () => {
+      fetchMock
+        .mockReset()
+        .mockResolvedValueOnce(okResponse('{"a":"x"}'))
+        .mockResolvedValueOnce(okResponse('{"a":1}'));
+      await expect(new AiService().json(request)).resolves.toEqual({ a: 1 });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    it('네트워크 오류 → 1회 재시도 후 AiUnavailableError(호출 2회)', async () => {
+      fetchMock.mockReset().mockRejectedValue(new TypeError('fetch failed raw-gateway-body'));
+      await expectUnavailable();
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    it('타임아웃(AI_TIMEOUT_MS) → AiUnavailableError, 호출은 상한 2회 이하', async () => {
+      process.env.AI_TIMEOUT_MS = '20';
+      fetchMock.mockReset().mockImplementation(
+        (_url: string, init: RequestInit) =>
+          new Promise((_resolve, reject) => {
+            init.signal?.addEventListener('abort', () =>
+              reject(new DOMException('aborted', 'AbortError')),
+            );
+          }),
+      );
+      await expectUnavailable();
+      expect(fetchMock.mock.calls.length).toBeGreaterThanOrEqual(1);
+      expect(fetchMock.mock.calls.length).toBeLessThanOrEqual(2);
+      // 매 시도가 자기 타이머를 가져야 두 번째 시도가 이미 끊긴 신호로 바로 실패하지 않는다.
+      const calls = fetchMock.mock.calls as [string, RequestInit][];
+      const signals = calls.map(([, init]) => init.signal);
+      expect(new Set(signals).size).toBe(signals.length);
+    });
+  });
 });
