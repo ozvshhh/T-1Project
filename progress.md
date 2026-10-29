@@ -73,7 +73,7 @@ Agent가 서비스 저장소 루트의 `progress.md`로 복사해 이어 쓴다(
 - [x] 로그인 필요 여부와 역할 이름(흐름 account·docker 시드 계정 역할 이름으로 씀) 결정 — 로그인 있음, 역할 `취준생` 하나(학생 답 2026-10-29)
 - [ ] 첫 화면에서 알려 줄 것(로그인하지 않은 사람이 `/`에서 볼 서비스 이름·하는 일)을 학생과 정함 — 학생 답(2026-10-29): 메인 화면은 프런트 팀원이 처리. 서비스 이름·한 줄 설명은 프런트 팀원에게서 받아야 함(대기)
 - [x] 주 사용 플랫폼(desktop·mobile·both)과 실제 사용 장면에 근거한 platformReason 작성 — desktop. 이유(학생 말 2026-10-29): "사용자 얼굴, 내가 말하거나 적는 텍스트, 면접관 화면 등 넣어야 하는 UI 요소가 많다". scenarios.yaml 작성 시 옮김
-- [ ] 사용자 핵심 흐름 3~8개를 scenarios.example.yaml 참고해 docs/scenarios.yaml에 작성(steps는 화면의 메뉴·버튼 이름으로 한 줄에 한 동작, 로그인 흐름은 account 지정), YAML 파서로 형식 확인 후 기본 브랜치 push
+- [ ] 사용자 핵심 흐름 3~8개를 scenarios.example.yaml 참고해 docs/scenarios.yaml에 작성(steps는 화면의 메뉴·버튼 이름으로 한 줄에 한 동작, 로그인 흐름은 account 지정), YAML 파서로 형식 확인 후 기본 브랜치 push — S1~S6 초안 작성(2026-10-29, feature/spec-2c). 버튼 이름은 임시. 팀 확인·main 반영 후 체크
 - [ ] 서비스의 AI 호출 필요 여부 확인
 - [ ] README 등 기존 문서에 확인된 구현 설계 기록, 기본 브랜치 push
 - 문제정의·구현 설계 링크 / commit SHA / 확인할 빈칸: https://github.com/tgYun783/T-1Project/blob/main/docs/problem.yaml / main 최신 / personas·sources·insight·why_ours·E1 세부·다른 팀원 경험 (학생 답 대기), 화면 표시 확인 대기
