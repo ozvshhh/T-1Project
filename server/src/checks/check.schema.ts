@@ -47,7 +47,9 @@ export class CheckSentence {
 export const CheckSentenceSchema = SchemaFactory.createForClass(CheckSentence);
 
 // 점검 답변에서 나온 사실 후보(R12). 경험이 아직 정해지지 않았을 수 있어 facts가 아니라 점검 안에 둔다(명세 08 「결정」).
-@Schema({ _id: true, timestamps: { createdAt: true, updatedAt: false } })
+// createdAt은 서비스가 응답(newCandidates)과 같은 값으로 직접 넣는다. timestamps를 켜면 $push 때 mongoose가
+// 다른 시각으로 덮어써 응답과 저장값이 1ms 어긋난다(CI에서 C8-4 테스트가 가끔 실패).
+@Schema({ _id: true })
 export class CheckCandidate {
   @Prop({ type: Types.ObjectId, default: null })
   experienceId!: Types.ObjectId | null;
@@ -70,6 +72,7 @@ export class CheckCandidate {
   @Prop({ type: String, required: true, enum: FACT_ORIGINS })
   origin!: FactOrigin;
 
+  @Prop({ type: Date, required: true })
   createdAt!: Date;
 }
 export const CheckCandidateSchema = SchemaFactory.createForClass(CheckCandidate);
