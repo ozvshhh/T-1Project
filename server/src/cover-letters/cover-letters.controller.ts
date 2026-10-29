@@ -3,9 +3,11 @@ import { AuthUser, CurrentUser } from '../auth/current-user.decorator';
 import { CoverLetterDto, CoverLetterItemDto } from './cover-letter.dto';
 import {
   validateCreateCoverLetter,
+  validateGenerateAnswer,
   validateGenerateCoverLetter,
   validateSelectExperiences,
   validateUpdateCoverLetter,
+  validateUpdateItem,
 } from './cover-letter.validation';
 import { CoverLettersService } from './cover-letters.service';
 
@@ -70,5 +72,28 @@ export class CoverLettersController {
   ): Promise<{ item: CoverLetterItemDto; usedElsewhere: { experienceId: string; itemIds: string[] }[] }> {
     const { experienceIds } = validateSelectExperiences(body);
     return this.service.selectExperiences(user.id, id, itemId, experienceIds);
+  }
+
+  // 문항 응답 생성(R8·C4). AI가 응답을 만드는 유일한 경로다. 문항만 바꾸므로 200이고, 검증을 소유자 조회보다 먼저 한다.
+  @Post(':id/items/:itemId/answer')
+  @HttpCode(HttpStatus.OK)
+  async answer(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Param('itemId') itemId: string,
+    @Body() body: unknown,
+  ): Promise<{ item: CoverLetterItemDto }> {
+    return { item: await this.service.generateAnswer(user.id, id, itemId, validateGenerateAnswer(body)) };
+  }
+
+  // 사용자가 고친 응답 저장(R8·R13). 빈 글 400을 남의 자소서 존재와 무관하게 하려고 검증을 먼저 한다.
+  @Patch(':id/items/:itemId')
+  async updateItem(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Param('itemId') itemId: string,
+    @Body() body: unknown,
+  ): Promise<{ item: CoverLetterItemDto }> {
+    return { item: await this.service.updateItem(user.id, id, itemId, validateUpdateItem(body)) };
   }
 }

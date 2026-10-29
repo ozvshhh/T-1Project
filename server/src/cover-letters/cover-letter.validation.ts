@@ -18,7 +18,15 @@ export interface GenerateCoverLetterInput {
   questions: string[];
 }
 
-type CoverLetterField = 'title' | 'body' | 'preferred' | 'talent' | 'questions' | 'experienceIds';
+type CoverLetterField =
+  | 'title'
+  | 'body'
+  | 'preferred'
+  | 'talent'
+  | 'questions'
+  | 'experienceIds'
+  | 'answer'
+  | 'confirmOverwrite';
 
 interface FieldError {
   field: CoverLetterField;
@@ -33,6 +41,8 @@ export const COVER_LETTER_REASONS = {
   talent: '희망 기업의 인재상을 입력해 주세요.',
   questions: '자기소개서 문항을 1개 이상 입력해 주세요(빈 문항 없이).',
   experienceIds: '고를 경험 카드 id 목록을 보내 주세요.',
+  answer: '응답 내용을 입력해 주세요.',
+  confirmOverwrite: '덮어쓰기 확인은 true 또는 false로 보내 주세요.',
 } as const;
 
 // 프런트가 칸별로 오류를 보여 주도록 field·reason을 담아 400 VALIDATION으로 돌려준다(api.md 1절).
@@ -103,6 +113,23 @@ export function validateSelectExperiences(raw: unknown): { experienceIds: string
     throw coverLetterValidationError([{ field: 'experienceIds', reason: COVER_LETTER_REASONS.experienceIds }]);
   }
   return { experienceIds: [...new Set(value)] };
+}
+
+// POST .../answer: confirmOverwrite는 선택이다. boolean이 아닌 값을 덮어쓰기 동의로 보면 고친 글이 사라질 수 있어 400으로 막는다.
+export function validateGenerateAnswer(raw: unknown): { confirmOverwrite: boolean } {
+  const value = asObject(raw).confirmOverwrite;
+  if (value === undefined) return { confirmOverwrite: false };
+  if (typeof value !== 'boolean') {
+    throw coverLetterValidationError([{ field: 'confirmOverwrite', reason: COVER_LETTER_REASONS.confirmOverwrite }]);
+  }
+  return { confirmOverwrite: value };
+}
+
+// PATCH .../items/:itemId: 사용자가 고친 응답. 줄바꿈은 점검 문장 위치에 쓰이므로 그대로 두고, 공백만이면 빈 글로 거부한다.
+export function validateUpdateItem(raw: unknown): { answer: string } {
+  const answer = readBody(asObject(raw).answer);
+  if (answer === null) throw coverLetterValidationError([{ field: 'answer', reason: COVER_LETTER_REASONS.answer }]);
+  return { answer };
 }
 
 // PATCH: 보낸 칸만 고친다. 보낸 body가 비었으면 400(빈 글로 덮어쓰지 않는다).

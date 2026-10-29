@@ -48,3 +48,33 @@ export function buildRecommendInput(input: RecommendInput): string {
     ...cards,
   ].join('\n');
 }
+
+// 문항 응답 지시문(명세 07, R8). 카드에 없는 수치·기여도·역할을 지어내면 면접에서 설명할 수 없는 자소서가 된다.
+export const ANSWER_SYSTEM = [
+  '너는 취업 준비생의 자기소개서 문항 하나에 대한 응답을 쓴다.',
+  '희망 기업의 우대사항·인재상과 문항을 보고, 주어진 경험 카드의 확정 사실만 근거로 쓴다.',
+  '카드에 없는 수치·기여도·역할을 쓰지 않는다. 확정 사실에 없는 성과나 경험을 짐작해 덧붙이지 않는다.',
+  '한국어 자기소개서 문체로, 이 문항 하나에 대한 응답만 쓴다.',
+].join('\n');
+
+// 응답 스키마(명세 07). 빈 응답은 받지 않는다: 스키마 밖이면 AiService가 실패(502)로 처리해 기존 응답을 지킨다(C2).
+export const answerSchema = z.object({ answer: z.string().trim().min(1) });
+export type AnswerResult = z.infer<typeof answerSchema>;
+
+// 입력은 우대사항·인재상·이 문항·고른 카드의 확정 사실뿐이다(명세 07 「결정」).
+// 후보·대화 원문·단서는 호출부에서 넘기지 않아 여기에 섞일 수 없다.
+export function buildAnswerInput(input: RecommendInput): string {
+  const cards = input.cards.flatMap((card) => [
+    `- 제목: ${card.title}`,
+    '  확정 사실:',
+    ...card.facts.map((fact) => `    - ${fact}`),
+  ]);
+  return [
+    `우대사항: ${input.preferred}`,
+    `인재상: ${input.talent}`,
+    `문항: ${input.question}`,
+    '',
+    '고른 경험 카드:',
+    ...cards,
+  ].join('\n');
+}

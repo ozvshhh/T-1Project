@@ -611,8 +611,185 @@ describe('C7-1 /api/cover-letters create·list·patch', () => {
     expectValidation(await select(a.token, id, itemIds[0], body), 'experienceIds');
   });
 
+  const answer = (token: string, id: string, itemId: string, body?: unknown) => {
+    const req = http().post(`/api/cover-letters/${id}/items/${itemId}/answer`).set('Authorization', `Bearer ${token}`);
+    return body === undefined ? req : req.send(body as object);
+  };
+
+  const patchItem = (token: string, id: string, itemId: string, body: unknown) =>
+    http()
+      .patch(`/api/cover-letters/${id}/items/${itemId}`)
+      .set('Authorization', `Bearer ${token}`)
+      .send(body as object);
+
+  // 확정 사실 + 후보 사실이 섞인 카드 A, 확정 사실만 있는 카드 B를 골라 둔 문항을 만든다.
+  async function readyToAnswer(): Promise<{ id: string; itemIds: string[]; e1: string; e2: string }> {
+    const e1 = await insertExperience(a.userId, '축제 운영');
+    await insertFact(a.userId, e1, '부스 동선을 다시 짰다', 'confirmed');
+    await insertFact(a.userId, e1, '후보문장XYZ', 'candidate');
+    const e2 = await insertExperience(a.userId, '동아리');
+    await insertFact(a.userId, e2, '회의록을 정리했다', 'confirmed');
+    const { id, itemIds } = await generatedTwo(a.token);
+    expect((await select(a.token, id, itemIds[0], { experienceIds: [e1, e2] })).status).toBe(200);
+    return { id, itemIds, e1, e2 };
+  }
+
+  // 응답은 고른 카드의 확정 사실만 근거로 해야 한다(R8·C1): 후보 문장이 AI 입력에 들어가면 근거 없는 내용이 자소서에 섞인다.
+  it('POST .../answer sends only confirmed facts of selected cards and saves answer, usedExperienceIds, answerEdited false', async () => {
+    const { id, itemIds, e1, e2 } = await readyToAnswer();
+    fake.queue('cover-letter-answer', { answer: '생성된 응답' });
+
+    const res = await answer(a.token, id, itemIds[0]);
+    expect(res.status).toBe(200);
+    expect(Object.keys(res.body as object)).toEqual(['item']);
+    const item = (res.body as { item: ItemBody }).item;
+    expect(item.id).toBe(itemIds[0]);
+    expect(item.answer).toBe('생성된 응답');
+    expect(item.usedExperienceIds).toEqual([e1, e2]);
+    expect(item.answerEdited).toBe(false);
+    const saved = (await savedItems(a.token, id))[0];
+    expect(saved.answer).toBe('생성된 응답');
+    expect(saved.usedExperienceIds).toEqual([e1, e2]);
+    // 다른 문항은 건드리지 않는다(이 문항 하나만, api.md 7절 ③).
+    expect((await savedItems(a.token, id))[1].answer).toBeNull();
+
+    expect(fake.calls).toHaveLength(1);
+    const call = fake.calls[0];
+    expect(call.task).toBe('cover-letter-answer');
+    expect(call.system).toContain('카드에 없는 수치·기여도·역할을 쓰지 않는다');
+    for (const text of ['부스 동선을 다시 짰다', '회의록을 정리했다', '축제 운영', '동아리', '우대', '인재', '문항 1']) {
+      expect(call.user).toContain(text);
+    }
+    expect(call.user).not.toContain('후보문장XYZ');
+    expect(call.system).not.toContain('후보문장XYZ');
+    expect(call.user).not.toContain('문항 2');
+  });
+
+  // 고른 카드가 없으면 근거 없는 응답이 된다: AI 비용을 쓰지 않고 400(api.md 7절 ③).
+  it('POST .../answer returns 400 without calling AI when no cards are selected', async () => {
+    const { id, itemIds } = await readyToAnswer();
+    const res = await answer(a.token, id, itemIds[1]);
+    expect(res.status).toBe(400);
+    expect(fake.calls).toHaveLength(0);
+    expect((await savedItems(a.token, id))[1].answer).toBeNull();
+  });
+
+  // 사용자가 고친 응답은 사용자의 글이다: answerEdited로 표시해야 다시 만들 때 덮어쓰기 확인을 받을 수 있다(R13).
+  it('PATCH .../items/:itemId saves the edited answer with answerEdited true and rejects empty answers', async () => {
+    const { id, itemIds, e1, e2 } = await readyToAnswer();
+    fake.queue('cover-letter-answer', { answer: '생성된 응답' });
+    expect((await answer(a.token, id, itemIds[0])).status).toBe(200);
+
+    const res = await patchItem(a.token, id, itemIds[0], { answer: '내가 고친 글' });
+    expect(res.status).toBe(200);
+    expect(Object.keys(res.body as object)).toEqual(['item']);
+    const item = (res.body as { item: ItemBody }).item;
+    expect(item.answer).toBe('내가 고친 글');
+    expect(item.answerEdited).toBe(true);
+    expect(item.usedExperienceIds).toEqual([e1, e2]);
+
+    for (const body of [{ answer: '' }, { answer: '   ' }, {}, { answer: 3 }]) {
+      expectValidation(await patchItem(a.token, id, itemIds[0], body), 'answer');
+    }
+    const saved = (await savedItems(a.token, id))[0];
+    expect(saved.answer).toBe('내가 고친 글');
+    expect(saved.answerEdited).toBe(true);
+    expect(fake.calls).toHaveLength(1);
+  });
+
+  // 고친 글을 확인 없이 AI가 덮어쓰면 사용자의 수정이 사라진다(C4·R13): 확인 전에는 AI도 부르지 않는다.
+  it('POST .../answer returns 409 OVERWRITE_CONFIRM_REQUIRED for edited answers until confirmOverwrite is true', async () => {
+    const { id, itemIds } = await readyToAnswer();
+    fake.queue('cover-letter-answer', { answer: '생성된 응답' });
+    expect((await answer(a.token, id, itemIds[0])).status).toBe(200);
+    expect((await patchItem(a.token, id, itemIds[0], { answer: '내가 고친 글' })).status).toBe(200);
+
+    for (const body of [undefined, {}, { confirmOverwrite: false }]) {
+      const res = await answer(a.token, id, itemIds[0], body);
+      expect(res.status).toBe(409);
+      expect((res.body as ErrorBody).error.code).toBe('OVERWRITE_CONFIRM_REQUIRED');
+    }
+    expect(fake.calls).toHaveLength(1);
+    expect((await savedItems(a.token, id))[0].answer).toBe('내가 고친 글');
+
+    // 형식이 틀린 확인 값은 덮어쓰기 동의로 보지 않는다.
+    expect((await answer(a.token, id, itemIds[0], { confirmOverwrite: 'yes' })).status).toBe(400);
+
+    fake.queue('cover-letter-answer', { answer: '다시 만든 응답' });
+    const ok = await answer(a.token, id, itemIds[0], { confirmOverwrite: true });
+    expect(ok.status).toBe(200);
+    const item = (ok.body as { item: ItemBody }).item;
+    expect(item.answer).toBe('다시 만든 응답');
+    expect(item.answerEdited).toBe(false);
+    expect((await savedItems(a.token, id))[0].answer).toBe('다시 만든 응답');
+  });
+
+  // 고치지 않은 응답은 확인 없이 다시 만들 수 있고, 그때의 선택이 usedExperienceIds가 된다(R13 다시 고르기).
+  it('POST .../answer regenerates an unedited answer without confirmation and records the current selection', async () => {
+    const { id, itemIds, e2 } = await readyToAnswer();
+    fake.queue('cover-letter-answer', { answer: '첫 응답' }, { answer: '둘째 응답' });
+    expect((await answer(a.token, id, itemIds[0])).status).toBe(200);
+    expect((await select(a.token, id, itemIds[0], { experienceIds: [e2] })).status).toBe(200);
+
+    const res = await answer(a.token, id, itemIds[0]);
+    expect(res.status).toBe(200);
+    const item = (res.body as { item: ItemBody }).item;
+    expect(item.answer).toBe('둘째 응답');
+    expect(item.usedExperienceIds).toEqual([e2]);
+    expect(fake.calls[1].user).not.toContain('부스 동선을 다시 짰다');
+  });
+
+  // AI가 실패하거나 스키마 밖을 돌려주면 기존 응답을 지켜야 한다(C2): 빈 응답으로 덮이면 사용자의 글이 사라진다.
+  it('POST .../answer returns 502 and keeps the existing answer when AI fails or replies off-schema', async () => {
+    const { id, itemIds, e1, e2 } = await readyToAnswer();
+    fake.fail('cover-letter-answer');
+    const r0 = await answer(a.token, id, itemIds[0]);
+    expect(r0.status).toBe(502);
+    expect((r0.body as ErrorBody).error.code).toBe('AI_UNAVAILABLE');
+    let saved = (await savedItems(a.token, id))[0];
+    expect(saved.answer).toBeNull();
+    expect(saved.usedExperienceIds).toEqual([]);
+
+    fake.queue('cover-letter-answer', { answer: '첫 응답' });
+    expect((await answer(a.token, id, itemIds[0])).status).toBe(200);
+    expect((await select(a.token, id, itemIds[0], { experienceIds: [e2] })).status).toBe(200);
+
+    fake.fail('cover-letter-answer');
+    fake.queue('cover-letter-answer', {}, { answer: '' }, { answer: '   ' });
+    for (let i = 0; i < 4; i++) expect((await answer(a.token, id, itemIds[0])).status).toBe(502);
+    saved = (await savedItems(a.token, id))[0];
+    expect(saved.answer).toBe('첫 응답');
+    expect(saved.usedExperienceIds).toEqual([e1, e2]);
+    expect(saved.answerEdited).toBe(false);
+  });
+
+  // 남의 자소서·없는 문항·잘못된 id는 같은 404로 막아 존재 여부가 새지 않게 하고 AI 비용도 쓰지 않는다(R1).
+  it('POST .../answer and PATCH .../items/:itemId 404 for others, missing items, malformed ids and pasted letters', async () => {
+    const { id, itemIds } = await readyToAnswer();
+    const pasted = await createOk(a.token, { body: '붙여넣은 글' });
+    const ghost = '0123456789abcdef01234567';
+
+    for (const [token, clId, itemId] of [
+      [b.token, id, itemIds[0]],
+      [a.token, id, ghost],
+      [a.token, id, 'bad'],
+      [a.token, 'bad', itemIds[0]],
+      [a.token, ghost, itemIds[0]],
+      [a.token, pasted.id, itemIds[0]],
+    ]) {
+      expectNotFound(await answer(token, clId, itemId));
+      expectNotFound(await patchItem(token, clId, itemId, { answer: '남의 글' }));
+    }
+    expect(fake.calls).toHaveLength(0);
+    expect((await savedItems(a.token, id))[0].answer).toBeNull();
+  });
+
   // 로그인 전에는 기능을 쓸 수 없다(C3).
   it('requires a token on every route', async () => {
+    expect((await http().post(`/api/cover-letters/${'0'.repeat(24)}/items/${'0'.repeat(24)}/answer`)).status).toBe(401);
+    expect(
+      (await http().patch(`/api/cover-letters/${'0'.repeat(24)}/items/${'0'.repeat(24)}`).send({ answer: 'x' })).status,
+    ).toBe(401);
     expect((await http().post('/api/cover-letters/generate').send(valid)).status).toBe(401);
     expect((await http().post('/api/cover-letters').send({ body: 'x' })).status).toBe(401);
     expect((await http().get('/api/cover-letters')).status).toBe(401);

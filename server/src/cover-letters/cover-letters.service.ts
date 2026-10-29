@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types, UpdateQuery } from 'mongoose';
 import { AiService } from '../ai/ai.service';
@@ -14,7 +14,15 @@ import {
   GenerateCoverLetterInput,
   UpdateCoverLetterInput,
 } from './cover-letter.validation';
-import { buildRecommendInput, RECOMMEND_SYSTEM, RecommendCard, recommendSchema } from './prompts';
+import {
+  ANSWER_SYSTEM,
+  answerSchema,
+  buildAnswerInput,
+  buildRecommendInput,
+  RECOMMEND_SYSTEM,
+  RecommendCard,
+  recommendSchema,
+} from './prompts';
 
 type CoverLetterRecord = CoverLetter & { _id: Types.ObjectId };
 type ItemRecord = CoverLetterItem & { _id: Types.ObjectId };
@@ -134,10 +142,88 @@ export class CoverLettersService {
     return { item: toItemDto(this.findItem(assertOwner(updated, userId), itemId)), usedElsewhere };
   }
 
+  // 문항 응답 생성(R8·R13). AI가 answer를 만드는 유일한 경로이며 사용자가 부를 때만 실행된다(C4).
+  // 고른 카드의 확정 사실만 AI에 넘기고, AI 성공 뒤에만 answer·usedExperienceIds를 저장한다(C2).
+  async generateAnswer(
+    userId: string,
+    id: string,
+    itemId: string,
+    input: { confirmOverwrite: boolean },
+  ): Promise<CoverLetterItemDto> {
+    const owned = await this.findOwned(userId, id);
+    const item = this.findItem(owned, itemId);
+    const selected = (item.selectedExperienceIds ?? []).map((e) => new Types.ObjectId(String(e)));
+    if (!selected.length) {
+      throw new BadRequestException({
+        code: 'NO_SELECTED_EXPERIENCES',
+        message: '이 문항에 쓸 경험 카드를 먼저 골라 주세요.',
+      });
+    }
+    // 사용자가 고친 글은 확인 없이 덮어쓰지 않는다(R13). AI 비용도 확인 뒤에만 쓴다.
+    if (item.answer !== null && item.answerEdited && !input.confirmOverwrite) {
+      throw new ConflictException({
+        code: 'OVERWRITE_CONFIRM_REQUIRED',
+        message: '직접 고친 응답이 있어요. 덮어쓸지 확인해 주세요.',
+      });
+    }
+
+    // 고른 뒤에 카드가 지워졌거나 확정 사실이 없어졌으면 근거 없는 응답이 되므로 PUT .../experiences와 같은 400으로 막는다.
+    const cards = await this.confirmedCards(owned.userId, selected);
+    const byId = new Map(cards.map((card) => [card.id, card]));
+    const missing = selected.map(String).filter((expId) => !byId.has(expId));
+    if (missing.length) {
+      throw new BadRequestException({
+        code: 'NO_CONFIRMED_FACTS',
+        message: '확정한 사실이 없는 경험 카드가 있어요. 카드를 다시 골라 주세요.',
+        details: missing.map((experienceId) => ({ experienceId })),
+      });
+    }
+
+    const result = await this.ai.json({
+      task: 'cover-letter-answer',
+      system: ANSWER_SYSTEM,
+      user: buildAnswerInput({
+        preferred: owned.target?.preferred ?? '',
+        talent: owned.target?.talent ?? '',
+        question: item.question,
+        cards: selected.map((oid) => byId.get(String(oid))!),
+      }),
+      schema: answerSchema,
+    });
+
+    const updated = await this.markChanged(
+      owned,
+      userId,
+      {
+        $set: {
+          'items.$.answer': result.answer.trim(),
+          'items.$.usedExperienceIds': selected,
+          'items.$.answerEdited': false,
+        },
+      },
+      item._id,
+    );
+    return toItemDto(this.findItem(updated, itemId));
+  }
+
+  // 사용자가 고친 응답 저장(R8). answerEdited를 켜 두어야 다음 응답 생성이 덮어쓰기 확인을 요구한다(R13).
+  async updateItem(userId: string, id: string, itemId: string, input: { answer: string }): Promise<CoverLetterItemDto> {
+    const owned = await this.findOwned(userId, id);
+    const item = this.findItem(owned, itemId);
+    const updated = await this.markChanged(
+      owned,
+      userId,
+      { $set: { 'items.$.answer': input.answer, 'items.$.answerEdited': true } },
+      item._id,
+    );
+    return toItemDto(this.findItem(updated, itemId));
+  }
+
   // 확정 사실이 1개 이상인 내 경험만 카드로 본다(C1). 후보 사실은 읽지 않아 AI 입력에 들어갈 수 없다.
-  private async confirmedCards(userId: Types.ObjectId): Promise<RecommendCard[]> {
+  // experienceIds를 주면 그 카드들로만 좁힌다(문항 응답은 고른 카드만 쓴다).
+  private async confirmedCards(userId: Types.ObjectId, experienceIds?: Types.ObjectId[]): Promise<RecommendCard[]> {
     const facts = await this.facts
-      .find({ userId, status: 'confirmed' })
+      .find({ userId, status: 'confirmed', ...(experienceIds ? { experienceId: { $in: experienceIds } } : {}) })
       .select('experienceId text')
       .sort({ createdAt: 1, _id: 1 })
       .lean<Pick<Fact, 'experienceId' | 'text'>[]>();
@@ -220,9 +306,12 @@ export class CoverLettersService {
     owned: CoverLetterRecord,
     userId: string,
     change: UpdateQuery<CoverLetter>,
+    itemId?: Types.ObjectId,
   ): Promise<CoverLetterRecord> {
+    // 문항을 바꿀 때는 그 문항을 조건에 넣어 위치 연산자(items.$)가 그 문항만 가리키게 한다.
+    const filter = { _id: owned._id, userId: owned.userId, ...(itemId ? { 'items._id': itemId } : {}) };
     const updated = await this.coverLetters
-      .findOneAndUpdate({ _id: owned._id, userId: owned.userId }, change, { returnDocument: 'after' })
+      .findOneAndUpdate(filter, change, { returnDocument: 'after' })
       .lean<CoverLetterRecord>();
     return assertOwner(updated, userId);
   }
