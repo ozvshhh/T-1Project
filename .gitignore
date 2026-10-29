@@ -30,3 +30,6 @@ e2e/node_modules/
 *.log
 .idea/
 .vscode/
+
+# 진행 안내 키트(팀 기획·구현 아님)
+docs/loopthon-starter/
