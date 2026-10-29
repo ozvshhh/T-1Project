@@ -5,22 +5,22 @@ Agent가 서비스 저장소 루트의 `progress.md`로 복사해 이어 쓴다(
 ## 현재 상태
 
 - 실제 서비스 저장소 폴더: /Users/du_dung/Project/sumtech/T-1Project (안내 키트: ../loopthon-starter)
-- 현재 단계 / 다음 행동: 1단계 거의 완료. 학생의 loopthon-bot 설치 완료 후 레포 URL 재저장으로 접근 확인 → 학생이 이어 가자고 하면 2단계(종이 기록 수령)
-- 학생에게 확인할 내용: loopthon-bot 앱 설치(T-1Project만 선택) 완료 여부
+- 현재 단계 / 다음 행동: 1단계 완료. 학생이 이어 가자고 하면 2단계(종이 문제정의 기록 수령)부터 진행
+- 학생에게 확인할 내용: 2단계 시작 시 종이 문제정의 기록(채팅 또는 사진)
 
 ## 1. GitHub 준비
 
 - [x] 기존 저장소·브랜치·remote와 로그인 확인 (gh: tgYun783, 기존 저장소 없음)
 - [x] 학생과 저장소 이름 합의 (답을 받기 전에는 생성하지 않음) — T-1Project, 본인 계정
 - [x] 팀의 private 레포 생성 또는 기존 레포 확인 — https://github.com/tgYun783/T-1Project (private, main)
-- [ ] loopthon-bot 앱을 팀 레포에 설치 (https://github.com/apps/loopthon-bot/installations/new, 팀 레포만 선택)
+- [x] loopthon-bot 앱을 팀 레포에 설치 (https://github.com/apps/loopthon-bot/installations/new, 팀 레포만 선택) — 학생이 설치 완료
 - [x] 팀 코드로 대시보드 API 로그인(`data.teamId`), 레포 URL을 HTTP로 저장(`data.team.repoUrl`) 확인. 팀 코드로는 화면에 들어갈 수 없음 — teamId 10, repoUrl 저장 ok, check.result=denied (앱 미설치)
 - [x] 사이트에 등록한 레포를 실제 작업 폴더로 clone, remote·기본 브랜치 확인 — origin=https://github.com/tgYun783/T-1Project.git, main
 - [x] .gitignore / .env.example / README 준비(`.env`·`node_modules/`·`.next/`·`dist/`·`build/` 제외, 큰 데이터 파일 커밋 안 함. 파일이 너무 많으면 저장소를 읽지 못함)
-- [ ] 준비 파일 commit/push 확인
-- [ ] 앱 설치 후 읽기 권한 확인 (5분 자동 재확인, 즉시 확인은 같은 레포 URL 다시 저장)
+- [x] 준비 파일 commit/push 확인 — e6421cc
+- [x] 앱 설치 후 읽기 권한 확인 (5분 자동 재확인, 즉시 확인은 같은 레포 URL 다시 저장) — 재저장 결과 check.result=ok, repoAccessOk=true
 - 저장소 URL / 기본 브랜치 / commit SHA: https://github.com/tgYun783/T-1Project / main / 416ecca
-- 사이트 등록 결과 / loopthon-bot 설치·접근 상태: 등록 ok / 앱 설치 대기, 접근 denied (2026-10-29)
+- 사이트 등록 결과 / loopthon-bot 설치·접근 상태: 등록 ok / 앱 설치 완료, 접근 ok (2026-10-29)
 
 ## 2. 문제정의 기록 → 문제 다지기 → 해법 찾기 → 기능 명세
 
