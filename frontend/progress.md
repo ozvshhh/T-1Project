@@ -23,3 +23,5 @@
   남은 일: 7번 A 소개·B 가입·로그인(App 라우트에 가드를 붙이는 건 각 화면 작업에서). 막힌 점 없음(가드 테스트는 화면이 없어 자리 표시 라우트로 검사).
 - [7] Intro(A) 신설, AuthPage를 스펙 글자·로그인 상태 리다이렉트(원래 주소 복귀)로 정리, App 라우트 `/`·`/signup`·`/login` 추가, auth.test.tsx 추가.
   남은 일: 8번 C 홈 잠금·목록(`/cover-letters` 라우트와 RequireAuth 연결). 막힌 점 없음(lint 경고는 기존 useLoad.ts 것).
+- [8] Home(C) 신설: 잠금 안내·열린 상태 목록, App에 RequireAuth로 /cover-letters 연결, Home.test.tsx(S1 흐름 포함) 추가.
+  남은 일: 9번 D 경험 목록·E 경험 등록. 막힌 점 없음(lint 경고는 기존 useLoad.ts 것).
