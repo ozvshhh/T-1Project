@@ -18,6 +18,7 @@ import { Request, Response } from 'express';
 import { AuthUser, CurrentUser } from '../auth/current-user.decorator';
 import { ClueFileInterceptor } from './clue-file.interceptor';
 import { UploadedClueFile, validateFileClue, validateTextClue } from './clue.validation';
+import { ConversationDto, ConversationService, ConversationStartDto } from './conversation.service';
 import { ClueDto, ExperienceDto, FactDto } from './experience.dto';
 import { validateCreateExperience, validateUpdateExperience } from './experience.validation';
 import { validateCreateFact, validateUpdateFact } from './fact.validation';
@@ -36,7 +37,10 @@ function contentDisposition(fileName: string): string {
 // 경험 API(api.md 4절). @Public()이 없으므로 전역 가드가 토큰을 요구하고, 사용자는 토큰에서만 얻는다.
 @Controller('experiences')
 export class ExperiencesController {
-  constructor(private readonly service: ExperiencesService) {}
+  constructor(
+    private readonly service: ExperiencesService,
+    private readonly conversation: ConversationService,
+  ) {}
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
@@ -91,6 +95,22 @@ export class ExperiencesController {
       length: file.data.length,
       disposition: contentDisposition(file.fileName),
     });
+  }
+
+  // 대화 화면이 처음 열릴 때 그리는 값(api.md 5절). 대화 전이면 messages가 빈 배열이다.
+  @Get(':id/conversation')
+  async getConversation(@CurrentUser() user: AuthUser, @Param('id') id: string): Promise<ConversationDto> {
+    return this.conversation.get(user.id, id);
+  }
+
+  // 새 질문을 만들 때도 기존 질문을 돌려줄 때도 api.md 5절대로 200으로 고정한다(Nest POST 기본 201이 아님).
+  @Post(':id/conversation/start')
+  @HttpCode(HttpStatus.OK)
+  async startConversation(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+  ): Promise<ConversationStartDto> {
+    return this.conversation.start(user.id, id);
   }
 
   // 사용자가 카드에 직접 쓰는 사실(api.md 6절). 형식 검증을 소유자 조회보다 먼저 해 400 여부로 남의 경험을 떠볼 수 없게 한다.
