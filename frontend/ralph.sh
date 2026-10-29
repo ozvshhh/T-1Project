@@ -13,7 +13,7 @@ for i in $(seq 1 "$MAX"); do
 
   claude -p "$(cat PROMPT.md)" \
     --permission-mode acceptEdits \
-    --allowedTools "Bash(npx vitest:*)" "Bash(npx tsc:*)" "Bash(npm run:*)" "Bash(npm test:*)" "Bash(git add:*)" "Bash(git commit:*)" "Bash(git status:*)" "Bash(git diff:*)" "Bash(git log:*)" \
+    --allowedTools "Bash(npx vitest:*)" "Bash(npx tsc:*)" "Bash(npm run:*)" "Bash(npm test:*)" "Bash(git add:*)" "Bash(git rm:*)" "Bash(git commit:*)" "Bash(git status:*)" "Bash(git diff:*)" "Bash(git log:*)" \
     2>&1 | tee "logs/iter-$i.log"
 
   secs=$(( $(date +%s) - start ))
