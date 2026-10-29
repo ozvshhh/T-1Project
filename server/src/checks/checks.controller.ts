@@ -1,6 +1,13 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Post } from '@nestjs/common';
 import { AuthUser, CurrentUser } from '../auth/current-user.decorator';
-import { AnswerResultDto, CheckDto, CheckSentenceDto, validateAnswerText } from './check.dto';
+import { FactDto } from '../experiences/experience.dto';
+import {
+  AnswerResultDto,
+  CheckDto,
+  CheckSentenceDto,
+  validateAnswerText,
+  validateConfirmCandidate,
+} from './check.dto';
 import { ChecksService } from './checks.service';
 
 // 제출 전 점검 API(api.md 9절). @Public()이 없으므로 전역 가드가 토큰을 요구하고, 사용자는 토큰에서만 얻는다.
@@ -48,5 +55,29 @@ export class ChecksController {
     @Body() body: unknown,
   ): Promise<AnswerResultDto> {
     return this.service.answer(user.id, checkId, sentenceId, validateAnswerText(body));
+  }
+
+  // 점검 후보 확정(R12·C1). 사실이 생기지만 경로가 후보 처리 동작이라 api.md 9절대로 200이다.
+  // 본문 검증을 소유자 조회보다 먼저 해 400 여부로 남의 점검을 떠볼 수 없게 한다.
+  @Post('checks/:checkId/candidates/:factId/confirm')
+  @HttpCode(HttpStatus.OK)
+  async confirmCandidate(
+    @CurrentUser() user: AuthUser,
+    @Param('checkId') checkId: string,
+    @Param('factId') factId: string,
+    @Body() body: unknown,
+  ): Promise<{ fact: FactDto }> {
+    return { fact: await this.service.confirmCandidate(user.id, checkId, factId, validateConfirmCandidate(body)) };
+  }
+
+  // 후보 버리기(R12). 돌려줄 본문이 없으므로 204.
+  @Delete('checks/:checkId/candidates/:factId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async deleteCandidate(
+    @CurrentUser() user: AuthUser,
+    @Param('checkId') checkId: string,
+    @Param('factId') factId: string,
+  ): Promise<void> {
+    await this.service.deleteCandidate(user.id, checkId, factId);
   }
 }

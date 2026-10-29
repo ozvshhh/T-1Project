@@ -5,7 +5,17 @@ import { AiUnavailableError } from '../ai/ai-unavailable.error';
 import { AiService } from '../ai/ai.service';
 import { assertOwner, parseObjectIdOr404 } from '../common/ownership';
 import { CoverLetter } from '../cover-letters/cover-letter.schema';
-import { AnswerResultDto, CheckDto, CheckSentenceDto, toCheckDto, toSentenceDto } from './check.dto';
+import { FactDto } from '../experiences/experience.dto';
+import { ExperiencesService } from '../experiences/experiences.service';
+import {
+  AnswerResultDto,
+  CheckDto,
+  CheckSentenceDto,
+  ConfirmCandidateInput,
+  toCandidateDto,
+  toCheckDto,
+  toSentenceDto,
+} from './check.dto';
 import { Check, INITIAL_FOLLOW_UPS, SentenceStatus } from './check.schema';
 import {
   buildJudgeInput,
@@ -22,12 +32,18 @@ import {
 type CoverLetterRecord = CoverLetter & { _id: Types.ObjectId };
 type CheckRecord = Check & { _id: Types.ObjectId };
 
+// 이미 확정했거나 버린 후보(api.md 9절). 같은 후보가 두 번 카드에 들어가거나 버린 것이 되살아나지 않게 한다.
+function candidateResolved(): ConflictException {
+  return new ConflictException({ code: 'CANDIDATE_RESOLVED', message: '이미 확정했거나 버린 후보예요.' });
+}
+
 @Injectable()
 export class ChecksService {
   constructor(
     @InjectModel(Check.name) private readonly checks: Model<Check>,
     @InjectModel(CoverLetter.name) private readonly coverLetters: Model<CoverLetter>,
     private readonly ai: AiService,
+    private readonly experiences: ExperiencesService,
   ) {}
 
   // 점검 만들기(R9). AI가 고른 문장은 믿지 않는다: 원문에 그대로 든 문장만 남기고, 문항 id는 서버가 다시 맞춘다.
@@ -144,6 +160,7 @@ export class ChecksService {
     const itemOid = sentence.coverLetterItemId;
     const item = itemOid ? (owned.items ?? []).find((i) => i._id.equals(itemOid)) : undefined;
     const turns = sentence.turns ?? [];
+    const cardIds = (item?.usedExperienceIds ?? []).map(String);
     const result = await this.ai.json({
       task: 'check-answer',
       system: JUDGE_SYSTEM,
@@ -152,9 +169,31 @@ export class ChecksService {
         context: item ? { question: item.question, text: item.answer ?? '' } : { text: owned.body ?? '' },
         turns,
         answer: text,
+        experienceIds: cardIds,
       }),
       schema: judgeSchema,
     });
+
+    // 후보(R12)는 확인 전이므로 candidate·ai_unverified로만 쌓는다(C1). experienceId는 AI 값을 믿지 않고
+    // 문항 근거 카드 안이면 그 값, 아니면 첫 카드, 붙여넣은 자소서(카드 없음)면 null로 서버가 정한다(명세 08).
+    const now = new Date();
+    const candidates = result.candidates
+      .map((c) => ({ item: c.item, text: c.text.trim(), experienceId: c.experienceId ?? null }))
+      .filter((c) => c.text !== '')
+      .map((c) => {
+        const picked = c.experienceId && cardIds.includes(c.experienceId) ? c.experienceId : cardIds[0];
+        return {
+          _id: new Types.ObjectId(),
+          experienceId: picked ? new Types.ObjectId(picked) : null,
+          item: c.item,
+          text: c.text,
+          status: 'candidate' as const,
+          source: 'ai_unverified' as const,
+          clueId: null,
+          origin: 'check' as const,
+          createdAt: now,
+        };
+      });
 
     // 같은 기준이 두 번 오면 첫 판정만 남긴다(기준별로 한 줄이어야 프런트가 빠진 요소를 하나씩 보여 준다).
     const judge = result.judge.filter((j, i, all) => all.findIndex((o) => o.id === j.id) === i);
@@ -197,15 +236,71 @@ export class ChecksService {
             'sentences.$.followUpsLeft': followUpsLeft,
             'sentences.$.turns': nextTurns,
           },
+          // 문장 판정과 같은 원자적 갱신에 넣어야 답이 한 번만 반영될 때 후보도 한 번만 쌓인다.
+          $push: { candidates: { $each: candidates } },
         },
         { returnDocument: 'after' },
       )
       .lean<CheckRecord>();
-    if (updated) return { sentence: toSentenceDto(this.findSentence(updated, sentenceId)), newCandidates: [] };
+    if (updated) {
+      return {
+        sentence: toSentenceDto(this.findSentence(updated, sentenceId)),
+        newCandidates: candidates.map(toCandidateDto),
+      };
+    }
     // 다른 요청이 먼저 답했거나 그사이 오래됨이 됐다: 다시 읽어 같은 규칙(409)으로 답하고, 아직 진행 중이면 지금 상태를 돌려준다.
     const current = this.findSentence(await this.findActive(userId, checkId), sentenceId);
     this.assertInProgress(current);
     return { sentence: toSentenceDto(current), newCandidates: [] };
+  }
+
+  // 점검 후보 확정(api.md 9절, R12·C1). 고른 경험이 내 것인지·단서 규칙은 ExperiencesService가 본 뒤,
+  // 후보를 원자적으로 꺼내는 데 성공해야 사실을 만든다(동시에 두 번 확정해도 사실은 하나). 자소서는 건드리지 않는다(C4).
+  // 오래된 점검도 허용한다: 후보는 사용자가 말한 사실이라 자소서가 바뀌어도 그대로 유효하다.
+  async confirmCandidate(userId: string, checkId: string, factId: string, input: ConfirmCandidateInput): Promise<FactDto> {
+    const check = await this.findOwnedCheck(userId, checkId);
+    const candidate = this.findCandidate(check, factId);
+    return this.experiences.addCheckFact(
+      userId,
+      input.experienceId,
+      {
+        item: input.item,
+        text: input.text ?? candidate.text,
+        source: input.source,
+        clueId: input.clueId,
+      },
+      () => this.pullCandidate(check._id, candidate._id),
+    );
+  }
+
+  // 후보 버리기(R12). 이미 확정했거나 버린 후보는 409로 알려 프런트가 목록을 다시 읽게 한다.
+  async deleteCandidate(userId: string, checkId: string, factId: string): Promise<void> {
+    const check = await this.findOwnedCheck(userId, checkId);
+    const candidate = this.findCandidate(check, factId);
+    await this.pullCandidate(check._id, candidate._id);
+  }
+
+  // 남의 점검·없는 점검·잘못된 id는 같은 404(R1). 후보 처리는 오래됨과 무관하게 소유만 본다.
+  private async findOwnedCheck(userId: string, checkId: string): Promise<CheckRecord> {
+    const doc = await this.checks.findById(parseObjectIdOr404(checkId)).lean<CheckRecord>();
+    return assertOwner(doc, userId);
+  }
+
+  // 잘못된 id 형식은 404, 목록에 없는 후보는 이미 처리한 것으로 보고 409 CANDIDATE_RESOLVED(api.md 9절).
+  private findCandidate(check: CheckRecord, factId: string): CheckRecord['candidates'][number] {
+    const oid = parseObjectIdOr404(factId);
+    const candidate = (check.candidates ?? []).find((c) => c._id.equals(oid));
+    if (!candidate) throw candidateResolved();
+    return candidate;
+  }
+
+  // 조건부 $pull로 꺼낸다: 다른 요청이 먼저 꺼냈으면 바뀐 것이 없으므로 409.
+  private async pullCandidate(checkOid: Types.ObjectId, candidateOid: Types.ObjectId): Promise<void> {
+    const res = await this.checks.updateOne(
+      { _id: checkOid, 'candidates._id': candidateOid },
+      { $pull: { candidates: { _id: candidateOid } } },
+    );
+    if (res.modifiedCount === 0) throw candidateResolved();
   }
 
   // 질문 없이 답을 받거나 끝난 판정을 덮어쓰지 않도록 진행 중인 문장만 답을 받는다(api.md 9절).

@@ -69,6 +69,7 @@ export const JUDGE_SYSTEM = [
   ...JUDGE_CRITERIA.map((c) => `- ${c}`),
   'missing인 기준이 있으면 빠진 요소를 이전 질문과 다른 각도로 묻는 질문 하나를 nextQuestion에 적는다. 모두 met이면 nextQuestion은 null로 둔다.',
   '답에서 사용자가 직접 말한 사실이 있으면 candidates에 항목(situation·role·action·result·meaning)과 함께 사용자가 말한 그대로 적는다. 지어내지 않는다.',
+  '근거 카드 id 목록이 주어지면 각 후보가 어느 카드의 사실인지 그 목록에서 하나를 골라 experienceId에 적는다. 목록이 없으면 experienceId는 null로 둔다.',
   '문장을 고쳐 쓰거나 더 나은 표현을 제안하지 않는다. 점수나 평가를 말하지 않는다.',
 ].join('\n');
 
@@ -77,12 +78,18 @@ export const judgeSchema = z.object({
   unknown: z.boolean(),
   judge: z.array(z.object({ id: z.enum(JUDGE_IDS), result: z.enum(JUDGE_RESULTS) })).min(1),
   nextQuestion: z.string().nullable(),
-  candidates: z.array(z.object({ item: z.enum(ITEMS), text: z.string() })),
+  // experienceId는 생성 자소서에서 AI가 고른 근거 카드다. 서버가 문항 근거 카드 목록과 대조해 바로잡는다(명세 08).
+  candidates: z.array(z.object({ item: z.enum(ITEMS), text: z.string(), experienceId: z.string().nullish() })),
 });
 export type JudgeAiResult = z.infer<typeof judgeSchema>;
 
 // 문맥·주장 문장·지금까지의 질문과 답·이번 답을 넘겨야 이전 답까지 합쳐 판정하고 같은 질문을 되풀이하지 않는다.
-export type JudgeInput = QuestionInput & { turns: { question: string; answer: string | null }[]; answer: string };
+// 생성 자소서면 그 문항의 근거 카드 id를 넘겨 후보가 어느 카드의 사실인지 AI가 고르게 한다.
+export type JudgeInput = QuestionInput & {
+  turns: { question: string; answer: string | null }[];
+  answer: string;
+  experienceIds?: string[];
+};
 
 export function buildJudgeInput(input: JudgeInput): string {
   const history = input.turns.slice(0, -1);
@@ -95,5 +102,6 @@ export function buildJudgeInput(input: JudgeInput): string {
       : []),
     `지금 질문: ${current?.question ?? ''}`,
     `사용자의 답: ${input.answer}`,
+    ...(input.experienceIds?.length ? ['', `근거 카드 id 목록: ${input.experienceIds.join(', ')}`] : []),
   ].join('\n');
 }

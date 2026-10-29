@@ -709,4 +709,337 @@ describe('C8-1 /api/cover-letters/:id/checks create·get·list', () => {
       expect(fake.calls).toEqual([]);
     });
   });
+
+  // 점검 답에서 나온 사실(R12)은 사용자가 확인해야만 경험 카드에 들어간다(C1). 후보가 사라지거나 확인 없이 카드에 들어가면
+  // 다음 자소서 근거가 흔들리고, 점검이 자소서를 건드리면 사용자가 쓰지 않은 글이 제출된다(C4).
+  describe('C8-4 check candidates confirm·delete', () => {
+    const SENTENCE = '저는 축제 운영팀장으로 방문객을 30% 늘렸습니다.';
+    const GEN_ANSWER = '저는 부스 동선을 바꿔 대기 시간을 20분 줄였습니다.';
+
+    interface CandidateBody {
+      id: string;
+      item: string;
+      text: string;
+      status: string;
+      source: string;
+      clueId: string | null;
+      origin: string;
+      createdAt: string;
+      experienceId: string | null;
+    }
+    type AnswerBody = { sentence: SentenceBody; newCandidates: CandidateBody[] };
+
+    const start = (token: string, checkId: string, sentenceId: string) =>
+      http().post(`/api/checks/${checkId}/sentences/${sentenceId}/start`).set(auth(token));
+    const answer = (token: string, checkId: string, sentenceId: string, text = '제가 직접 엑셀로 셌어요') =>
+      http().post(`/api/checks/${checkId}/sentences/${sentenceId}/answers`).set(auth(token)).send({ text });
+    const confirm = (token: string, checkId: string, factId: string, body: unknown) =>
+      http()
+        .post(`/api/checks/${checkId}/candidates/${factId}/confirm`)
+        .set(auth(token))
+        .send(body as object);
+    const discard = (token: string, checkId: string, factId: string) =>
+      http().delete(`/api/checks/${checkId}/candidates/${factId}`).set(auth(token));
+
+    // 답 판정 응답: 빠진 기준이 있어 추가 질문이 이어지므로 같은 문장에 여러 번 답할 수 있다.
+    const judged = (candidates: unknown[]) => ({
+      unknown: false,
+      judge: [{ id: 'J1', result: 'missing' }],
+      nextQuestion: '다음 질문',
+      candidates,
+    });
+
+    async function experience(token: string, title = '축제 운영'): Promise<string> {
+      const res = await http()
+        .post('/api/experiences')
+        .set(auth(token))
+        .send({ title, period: '2025년 여름' })
+        .expect(201);
+      return (res.body as { experience: { id: string } }).experience.id;
+    }
+
+    async function clue(token: string, expId: string): Promise<string> {
+      const res = await http()
+        .post(`/api/experiences/${expId}/clues`)
+        .set(auth(token))
+        .send({ type: 'text', text: '방문객 집계표' })
+        .expect(201);
+      return (res.body as { clue: { id: string } }).clue.id;
+    }
+
+    async function confirmedFact(token: string, expId: string, text: string): Promise<void> {
+      await http()
+        .post(`/api/experiences/${expId}/facts`)
+        .set(auth(token))
+        .send({ item: 'action', text, source: 'said' })
+        .expect(201);
+    }
+
+    // 붙여넣은 자소서로 점검을 만들고 첫 문장을 시작해 둔다.
+    async function pastedStarted(token: string): Promise<{ letterId: string; checkId: string; sentenceId: string }> {
+      const letterId = await pasted(token);
+      fake.queue('check-sentences', { sentences: [{ text: SENTENCE, coverLetterItemId: null }] });
+      const check = await createOk(token, letterId);
+      fake.queue('check-question', { question: 'Q1' });
+      await start(token, check.id, check.sentences[0].id).expect(200);
+      return { letterId, checkId: check.id, sentenceId: check.sentences[0].id };
+    }
+
+    // 근거 카드 둘(exp1·exp2)로 만든 응답이 있는 생성 자소서에서 점검을 만들고 그 문장을 시작해 둔다.
+    async function generatedStarted(
+      token: string,
+    ): Promise<{ letterId: string; checkId: string; sentenceId: string; used: string[] }> {
+      const { id, itemIds } = await generated(token);
+      const exp1 = await experience(token, '축제 운영');
+      const exp2 = await experience(token, '동아리 회계');
+      await confirmedFact(token, exp1, '부스 동선을 다시 짰다');
+      await confirmedFact(token, exp2, '예산표를 정리했다');
+      await http()
+        .put(`/api/cover-letters/${id}/items/${itemIds[0]}/experiences`)
+        .set(auth(token))
+        .send({ experienceIds: [exp1, exp2] })
+        .expect(200);
+      fake.queue('cover-letter-answer', { answer: GEN_ANSWER });
+      await http().post(`/api/cover-letters/${id}/items/${itemIds[0]}/answer`).set(auth(token)).expect(200);
+      fake.queue('check-sentences', { sentences: [{ text: GEN_ANSWER, coverLetterItemId: itemIds[0] }] });
+      const check = await createOk(token, id);
+      fake.queue('check-question', { question: 'Q1' });
+      await start(token, check.id, check.sentences[0].id).expect(200);
+      return { letterId: id, checkId: check.id, sentenceId: check.sentences[0].id, used: [exp1, exp2] };
+    }
+
+    async function candidatesOf(token: string, checkId: string): Promise<CandidateBody[]> {
+      const res = await getCheck(token, checkId).expect(200);
+      return (res.body as { check: { candidates: CandidateBody[] } }).check.candidates;
+    }
+
+    async function letterOf(token: string, letterId: string): Promise<unknown> {
+      return (await http().get(`/api/cover-letters/${letterId}`).set(auth(token)).expect(200)).body;
+    }
+
+    afterEach(async () => {
+      await connection.collection('experiences').deleteMany({});
+      await connection.collection('facts').deleteMany({});
+      await connection.collection('clues').deleteMany({});
+    });
+
+    // 생성 자소서의 후보는 그 문항의 근거 카드에만 붙어야 엉뚱한 경험으로 확정되지 않는다: AI 값이 목록 밖이면 첫 카드로.
+    it('stores answer candidates as ai_unverified on the check and returns them as newCandidates with an experienceId from the item’s cards', async () => {
+      const { checkId, sentenceId, used } = await generatedStarted(a.token);
+      fake.queue('check-answer', judged([{ item: 'action', text: '엑셀로 대기 시간을 셌다', experienceId: used[1] }]));
+
+      const res = await answer(a.token, checkId, sentenceId);
+
+      expect(res.status).toBe(200);
+      const { newCandidates } = res.body as AnswerBody;
+      expect(newCandidates).toEqual([
+        {
+          id: expect.any(String) as string,
+          item: 'action',
+          text: '엑셀로 대기 시간을 셌다',
+          status: 'candidate',
+          source: 'ai_unverified',
+          clueId: null,
+          origin: 'check',
+          createdAt: expect.stringMatching(ISO) as string,
+          experienceId: used[1],
+        },
+      ]);
+      expect(await candidatesOf(a.token, checkId)).toEqual(newCandidates);
+
+      // 목록 밖·없는 experienceId는 첫 근거 카드로 바로잡고, 두 번째 답의 후보는 앞의 후보 뒤에 쌓인다.
+      fake.queue(
+        'check-answer',
+        judged([
+          { item: 'result', text: '대기 시간이 20분 줄었다', experienceId: new Types.ObjectId().toHexString() },
+          { item: 'role', text: '동선 담당이었다' },
+        ]),
+      );
+      const second = await answer(a.token, checkId, sentenceId, '두 번째 답');
+      expect(second.status).toBe(200);
+      const more = (second.body as AnswerBody).newCandidates;
+      expect(more.map((c) => [c.item, c.experienceId])).toEqual([
+        ['result', used[0]],
+        ['role', used[0]],
+      ]);
+      const stored = await candidatesOf(a.token, checkId);
+      expect(stored.map((c) => c.text)).toEqual(['엑셀로 대기 시간을 셌다', '대기 시간이 20분 줄었다', '동선 담당이었다']);
+      expect(new Set(stored.map((c) => c.id)).size).toBe(3);
+      // 고를 수 있는 근거 카드 id를 AI 입력에 넣어야 AI가 그중 하나를 고를 수 있다.
+      const call = fake.calls.filter((c) => c.task === 'check-answer').pop();
+      expect(call?.user).toContain(used[0]);
+      expect(call?.user).toContain(used[1]);
+    });
+
+    // 붙여넣은 자소서에는 근거 카드가 없으니 경험을 사용자가 고르도록 null이어야 한다.
+    it('gives pasted-letter candidates experienceId null and drops blank candidate texts', async () => {
+      const { checkId, sentenceId } = await pastedStarted(a.token);
+      fake.queue(
+        'check-answer',
+        judged([
+          { item: 'action', text: '집계표를 만들었다', experienceId: new Types.ObjectId().toHexString() },
+          { item: 'result', text: '   ' },
+        ]),
+      );
+
+      const res = await answer(a.token, checkId, sentenceId);
+
+      expect(res.status).toBe(200);
+      const { newCandidates } = res.body as AnswerBody;
+      expect(newCandidates).toHaveLength(1);
+      expect(newCandidates[0]).toMatchObject({ text: '집계표를 만들었다', experienceId: null, source: 'ai_unverified' });
+    });
+
+    // AI가 실패하면 후보도 쌓이지 않아야 한다(C2).
+    it('stores no candidate when the AI fails or the judge is off-schema', async () => {
+      const { checkId, sentenceId } = await pastedStarted(a.token);
+      fake.fail('check-answer');
+      fake.queue('check-answer', { unknown: false, judge: [], nextQuestion: null, candidates: [{ item: 'action', text: 'x' }] });
+      expect((await answer(a.token, checkId, sentenceId)).status).toBe(502);
+      expect((await answer(a.token, checkId, sentenceId)).status).toBe(502);
+      expect(await candidatesOf(a.token, checkId)).toEqual([]);
+    });
+
+    // 확인한 후보만 고른 경험 카드에 confirmed·origin check로 들어가고, 처리한 후보는 목록에서 빠져야 두 번 넣지 않는다(C1).
+    it('confirm adds a confirmed origin:check fact to my chosen experience and removes the candidate', async () => {
+      const { letterId, checkId, sentenceId } = await pastedStarted(a.token);
+      fake.queue(
+        'check-answer',
+        judged([
+          { item: 'action', text: '집계표를 만들었다' },
+          { item: 'result', text: '방문객이 늘었다' },
+        ]),
+      );
+      const [first, second] = ((await answer(a.token, checkId, sentenceId)).body as AnswerBody).newCandidates;
+      const expId = await experience(a.token);
+      const clueId = await clue(a.token, expId);
+      const letterBefore = await letterOf(a.token, letterId);
+      fake.reset();
+
+      const res = await confirm(a.token, checkId, first.id, {
+        experienceId: expId,
+        item: 'result',
+        text: '방문객 집계표를 직접 만들었다',
+        source: 'clue',
+        clueId,
+      });
+
+      expect(res.status).toBe(200);
+      expect(Object.keys(res.body as object)).toEqual(['fact']);
+      const fact = (res.body as { fact: Record<string, unknown> }).fact;
+      expect(fact).toMatchObject({
+        item: 'result',
+        text: '방문객 집계표를 직접 만들었다',
+        status: 'confirmed',
+        source: 'clue',
+        clueId,
+        origin: 'check',
+      });
+      const exp = (await http().get(`/api/experiences/${expId}`).set(auth(a.token)).expect(200)).body as {
+        experience: { card: Record<string, { id: string; origin: string }[]>; candidates: unknown[] };
+      };
+      expect(exp.experience.card.result.map((f) => f.id)).toEqual([fact.id]);
+      expect(exp.experience.candidates).toEqual([]);
+      expect((await candidatesOf(a.token, checkId)).map((c) => c.id)).toEqual([second.id]);
+
+      // text를 보내지 않으면 후보 문장 그대로 확정한다.
+      const plain = await confirm(a.token, checkId, second.id, { experienceId: expId, item: 'result', source: 'said' });
+      expect(plain.status).toBe(200);
+      expect((plain.body as { fact: Record<string, unknown> }).fact).toMatchObject({
+        text: '방문객이 늘었다',
+        source: 'said',
+        clueId: null,
+        origin: 'check',
+      });
+      expect(await candidatesOf(a.token, checkId)).toEqual([]);
+      // 점검 API는 AI를 부르지 않고 자소서를 바꾸지 않는다(C4).
+      expect(fake.calls).toEqual([]);
+      expect(await letterOf(a.token, letterId)).toEqual(letterBefore);
+    });
+
+    // 확인하지 않은 출처·다른 경험의 단서를 받으면 출처 보기(R5)가 엉뚱한 자료를 연다: 400이고 후보는 남는다.
+    it('confirm returns 400 for ai_unverified, missing fields or a clue rule violation and keeps the candidate', async () => {
+      const { checkId, sentenceId } = await pastedStarted(a.token);
+      fake.queue('check-answer', judged([{ item: 'action', text: '집계표를 만들었다' }]));
+      const [cand] = ((await answer(a.token, checkId, sentenceId)).body as AnswerBody).newCandidates;
+      const expId = await experience(a.token);
+      const otherExp = await experience(a.token, '다른 경험');
+      const otherClue = await clue(a.token, otherExp);
+
+      const bodies: unknown[] = [
+        { experienceId: expId, item: 'action', source: 'ai_unverified' },
+        { experienceId: expId, item: 'action', source: 'clue' },
+        { experienceId: expId, item: 'action', source: 'clue', clueId: 'not-an-id' },
+        { experienceId: expId, item: 'action', source: 'clue', clueId: otherClue },
+        { experienceId: expId, item: 'action', source: 'clue', clueId: new Types.ObjectId().toHexString() },
+        { experienceId: expId, source: 'said' },
+        { experienceId: expId, item: 'nope', source: 'said' },
+        { experienceId: expId, item: 'action', text: '  ', source: 'said' },
+        { item: 'action', source: 'said' },
+      ];
+      for (const body of bodies) {
+        const res = await confirm(a.token, checkId, cand.id, body);
+        expect(res.status).toBe(400);
+        expect((res.body as ErrorBody).error.code).toBe('VALIDATION');
+      }
+      expect((await candidatesOf(a.token, checkId)).map((c) => c.id)).toEqual([cand.id]);
+      expect(await connection.collection('facts').countDocuments({ origin: 'check' })).toBe(0);
+    });
+
+    // 남의 경험·점검에는 넣을 수 없어야 하고, 있는지조차 알 수 없어야 한다(R1).
+    it('confirm and delete return 404 for another user’s experience or check and malformed ids, 401 without a token', async () => {
+      const { checkId, sentenceId } = await pastedStarted(a.token);
+      fake.queue('check-answer', judged([{ item: 'action', text: '집계표를 만들었다' }]));
+      const [cand] = ((await answer(a.token, checkId, sentenceId)).body as AnswerBody).newCandidates;
+      const myExp = await experience(a.token);
+      const bExp = await experience(b.token);
+
+      expectNotFound(await confirm(a.token, checkId, cand.id, { experienceId: bExp, item: 'action', source: 'said' }));
+      expectNotFound(await confirm(a.token, checkId, cand.id, { experienceId: 'not-an-id', item: 'action', source: 'said' }));
+      expectNotFound(await confirm(b.token, checkId, cand.id, { experienceId: bExp, item: 'action', source: 'said' }));
+      expectNotFound(await confirm(a.token, 'not-an-id', cand.id, { experienceId: myExp, item: 'action', source: 'said' }));
+      expectNotFound(await confirm(a.token, checkId, 'not-an-id', { experienceId: myExp, item: 'action', source: 'said' }));
+      expectNotFound(await discard(b.token, checkId, cand.id));
+      expectNotFound(await discard(a.token, checkId, 'not-an-id'));
+      expect((await http().delete(`/api/checks/${checkId}/candidates/${cand.id}`)).status).toBe(401);
+
+      expect((await candidatesOf(a.token, checkId)).map((c) => c.id)).toEqual([cand.id]);
+      expect(await connection.collection('facts').countDocuments({ origin: 'check' })).toBe(0);
+    });
+
+    // 이미 확정했거나 버린 후보를 다시 처리하면 같은 사실이 두 번 들어가거나 버린 것이 되살아난다: 409 CANDIDATE_RESOLVED.
+    it('delete returns 204 and resolved candidates return 409 CANDIDATE_RESOLVED on confirm or delete', async () => {
+      const { letterId, checkId, sentenceId } = await pastedStarted(a.token);
+      fake.queue(
+        'check-answer',
+        judged([
+          { item: 'action', text: '집계표를 만들었다' },
+          { item: 'result', text: '방문객이 늘었다' },
+        ]),
+      );
+      const [first, second] = ((await answer(a.token, checkId, sentenceId)).body as AnswerBody).newCandidates;
+      const expId = await experience(a.token);
+      const letterBefore = await letterOf(a.token, letterId);
+      const ok = { experienceId: expId, item: 'action', source: 'said' };
+
+      const removed = await discard(a.token, checkId, first.id);
+      expect(removed.status).toBe(204);
+      expect(removed.text).toBe('');
+      expect((await candidatesOf(a.token, checkId)).map((c) => c.id)).toEqual([second.id]);
+
+      await confirm(a.token, checkId, second.id, ok).expect(200);
+      const expectResolved = (res: request.Response) => {
+        expect(res.status).toBe(409);
+        expect((res.body as ErrorBody).error.code).toBe('CANDIDATE_RESOLVED');
+      };
+      expectResolved(await confirm(a.token, checkId, first.id, ok));
+      expectResolved(await discard(a.token, checkId, first.id));
+      expectResolved(await confirm(a.token, checkId, second.id, ok));
+      expectResolved(await discard(a.token, checkId, second.id));
+      expectResolved(await confirm(a.token, checkId, new Types.ObjectId().toHexString(), ok));
+
+      expect(await connection.collection('facts').countDocuments({ origin: 'check' })).toBe(1);
+      expect(await letterOf(a.token, letterId)).toEqual(letterBefore);
+    });
+  });
 });

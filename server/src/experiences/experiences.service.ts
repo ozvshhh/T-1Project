@@ -136,6 +136,31 @@ export class ExperiencesService {
     return toFactDto(created.toObject());
   }
 
+  // 점검 후보 확정(api.md 9절, R12·C1): 사용자가 고른 내 경험에 확인한 사실을 confirmed·origin check로 넣는다.
+  // 경험 소유(404)·단서 소속(400)을 먼저 본 뒤 claim(후보 꺼내기)이 성공해야 만든다: 실패한 요청에 후보가 사라지거나 같은 후보가 두 번 들어가지 않는다.
+  async addCheckFact(
+    userId: string,
+    experienceId: string,
+    input: FactInput,
+    claim: () => Promise<void>,
+  ): Promise<FactDto> {
+    const owned = await this.findOwned(userId, experienceId);
+    if (input.source === 'clue') await this.assertClueOfExperience(owned, input.clueId);
+    await claim();
+    const created = await this.facts.create({
+      experienceId: owned._id,
+      userId: owned.userId,
+      item: input.item,
+      text: input.text,
+      status: 'confirmed',
+      source: input.source,
+      clueId: input.source === 'clue' ? input.clueId : null,
+      origin: 'check',
+    });
+    await this.touch(owned);
+    return toFactDto(created.toObject());
+  }
+
   // 보낸 칸만 고친다. 고친 뒤의 출처가 clue면 그 단서가 이 경험 것인지 다시 확인해, 고치는 길로 남의 단서가 붙지 않게 한다(C1).
   async updateFact(userId: string, id: string, factId: string, input: Partial<FactInput>): Promise<FactDto> {
     const owned = await this.findOwned(userId, id);
