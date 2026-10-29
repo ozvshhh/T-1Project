@@ -426,4 +426,50 @@ describe('Experience conversation start/get (e2e)', () => {
       expect(fake.calls).toHaveLength(0);
     });
   });
+
+  // 이력서에서 온 활동 내용(명세 10, api.md 5절). 경험은 이력서 초안 확정으로만 생기므로, 그 원문을 AI가 봐야
+  // 이미 쓴 내용을 다시 묻지 않는다. 비어 있으면 빈 줄을 넣지 않아 내용이 있는 것처럼 보이지 않게 한다.
+  describe('resume summary in conversation AI input', () => {
+    const LABEL = '이력서에서 온 활동 내용';
+    const SUMMARY = '축제 부스 대기 줄을 줄이려고 번호표 시스템을 직접 만들었다';
+    const lastCall = (task: string) => fake.calls.filter((c) => c.task === task).at(-1)!.user;
+
+    it('summary set → start and answers AI input contain the label and the summary', async () => {
+      const token = await signup('conv-summary@example.com');
+      const { id: expId } = await createExperienceViaResume(app, token, {
+        title: '동아리 축제',
+        period: '2025년 여름',
+        summary: SUMMARY,
+      });
+
+      fake.queue('conversation-start', { question: '그때 어떤 상황이었나요?', itemStatus: FIRST_STATUS });
+      await start(token, expId).expect(200);
+      expect(lastCall('conversation-start')).toContain(`${LABEL}: ${SUMMARY}`);
+
+      fake.queue('conversation-answer', { question: 'Q2', itemStatus: FIRST_STATUS, candidates: [] });
+      await http()
+        .post(`/api/experiences/${expId}/conversation/answers`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ text: '첫 답입니다' })
+        .expect(200);
+      expect(lastCall('conversation-answer')).toContain(`${LABEL}: ${SUMMARY}`);
+    });
+
+    it('summary empty → start and answers AI input have no summary line', async () => {
+      const token = await signup('conv-nosummary@example.com');
+      const expId = await createExperience(token);
+
+      fake.queue('conversation-start', { question: '그때 어떤 상황이었나요?', itemStatus: FIRST_STATUS });
+      await start(token, expId).expect(200);
+      expect(lastCall('conversation-start')).not.toContain(LABEL);
+
+      fake.queue('conversation-answer', { question: 'Q2', itemStatus: FIRST_STATUS, candidates: [] });
+      await http()
+        .post(`/api/experiences/${expId}/conversation/answers`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ text: '첫 답입니다' })
+        .expect(200);
+      expect(lastCall('conversation-answer')).not.toContain(LABEL);
+    });
+  });
 });

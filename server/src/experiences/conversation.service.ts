@@ -103,6 +103,8 @@ export class ConversationService {
       user: buildConversationInput({
         title: owned.title,
         period: owned.period,
+        // summary 필드가 생기기 전에 저장된 문서도 대화가 깨지지 않게 빈 문자열로 본다.
+        summary: owned.summary ?? '',
         clues,
         messages: [],
         itemStatus: itemStatusOf(owned),
@@ -140,6 +142,7 @@ export class ConversationService {
       user: buildConversationInput({
         title: owned.title,
         period: owned.period,
+        summary: owned.summary ?? '',
         clues,
         messages: [...messages.map((m) => ({ role: m.role, text: m.text })), { role: 'user', text }],
         itemStatus: itemStatusOf(owned),
