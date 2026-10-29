@@ -26,7 +26,7 @@ export interface CoverLetterDto {
 type ItemRecord = CoverLetterItem & { _id: Types.ObjectId };
 type CoverLetterRecord = CoverLetter & { _id: unknown };
 
-function toItemDto(item: ItemRecord): CoverLetterItemDto {
+export function toItemDto(item: ItemRecord): CoverLetterItemDto {
   return {
     id: String(item._id),
     question: item.question,

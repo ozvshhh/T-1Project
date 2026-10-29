@@ -1,9 +1,12 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types, UpdateQuery } from 'mongoose';
+import { AiService } from '../ai/ai.service';
 import { assertOwner, parseObjectIdOr404 } from '../common/ownership';
-import { CoverLetterDto, toCoverLetterDto } from './cover-letter.dto';
-import { CoverLetter } from './cover-letter.schema';
+import { Experience } from '../experiences/experience.schema';
+import { Fact } from '../experiences/fact.schema';
+import { CoverLetterDto, CoverLetterItemDto, toCoverLetterDto, toItemDto } from './cover-letter.dto';
+import { CoverLetter, CoverLetterItem } from './cover-letter.schema';
 import {
   COVER_LETTER_REASONS,
   coverLetterValidationError,
@@ -11,12 +14,100 @@ import {
   GenerateCoverLetterInput,
   UpdateCoverLetterInput,
 } from './cover-letter.validation';
+import { buildRecommendInput, RECOMMEND_SYSTEM, RecommendCard, recommendSchema } from './prompts';
 
 type CoverLetterRecord = CoverLetter & { _id: Types.ObjectId };
+type ItemRecord = CoverLetterItem & { _id: Types.ObjectId };
 
 @Injectable()
 export class CoverLettersService {
-  constructor(@InjectModel(CoverLetter.name) private readonly coverLetters: Model<CoverLetter>) {}
+  constructor(
+    @InjectModel(CoverLetter.name) private readonly coverLetters: Model<CoverLetter>,
+    @InjectModel(Experience.name) private readonly experiences: Model<Experience>,
+    @InjectModel(Fact.name) private readonly facts: Model<Fact>,
+    private readonly ai: AiService,
+  ) {}
+
+  // 문항별 카드 추천(R8). 후보 집합은 서버가 정하고 AI는 그 안에서만 고른다: AI가 돌려준 id는 집합과 대조해 버린다.
+  // AI 성공 뒤에만 추천을 저장해 실패하면 문항이 그대로 남는다(C2). 응답(answer)은 건드리지 않는다(C4).
+  async recommend(userId: string, id: string, itemId: string): Promise<CoverLetterItemDto> {
+    const owned = await this.findOwned(userId, id);
+    const item = this.findItem(owned, itemId);
+    const cards = await this.confirmedCards(owned.userId);
+    // 고를 카드가 없으면 AI 비용을 쓰지 않고 경험 정리로 안내한다(api.md 7절).
+    if (!cards.length) {
+      throw new BadRequestException({
+        code: 'NO_CONFIRMED_FACTS',
+        message: '확정한 사실이 있는 경험이 없어요. 경험 카드를 먼저 정리해 주세요.',
+      });
+    }
+
+    const result = await this.ai.json({
+      task: 'cover-letter-recommend',
+      system: RECOMMEND_SYSTEM,
+      user: buildRecommendInput({
+        preferred: owned.target?.preferred ?? '',
+        talent: owned.target?.talent ?? '',
+        question: item.question,
+        cards,
+      }),
+      schema: recommendSchema,
+    });
+
+    // 후보 집합 밖 id(지어낸 id·남의 id·후보만 있는 경험)는 버리고, 같은 카드가 두 번 오면 처음 것만 남긴다.
+    const allowed = new Set(cards.map((card) => card.id));
+    const seen = new Set<string>();
+    const recommendations: { experienceId: Types.ObjectId; reason: string }[] = [];
+    for (const rec of result.recommendations) {
+      const expId = rec.experienceId.trim();
+      if (!allowed.has(expId) || seen.has(expId)) continue;
+      seen.add(expId);
+      recommendations.push({ experienceId: new Types.ObjectId(expId), reason: rec.reason.trim() });
+    }
+
+    const updated = await this.coverLetters
+      .findOneAndUpdate(
+        { _id: owned._id, userId: owned.userId, 'items._id': item._id },
+        { $set: { 'items.$.recommendations': recommendations } },
+        { returnDocument: 'after' },
+      )
+      .lean<CoverLetterRecord>();
+    return toItemDto(this.findItem(assertOwner(updated, userId), itemId));
+  }
+
+  // 확정 사실이 1개 이상인 내 경험만 카드로 본다(C1). 후보 사실은 읽지 않아 AI 입력에 들어갈 수 없다.
+  private async confirmedCards(userId: Types.ObjectId): Promise<RecommendCard[]> {
+    const facts = await this.facts
+      .find({ userId, status: 'confirmed' })
+      .select('experienceId text')
+      .sort({ createdAt: 1, _id: 1 })
+      .lean<Pick<Fact, 'experienceId' | 'text'>[]>();
+    if (!facts.length) return [];
+    const byExperience = new Map<string, string[]>();
+    for (const fact of facts) {
+      const key = String(fact.experienceId);
+      byExperience.set(key, [...(byExperience.get(key) ?? []), fact.text]);
+    }
+    // 사실이 남아 있어도 경험이 지워졌거나 내 것이 아니면 카드가 아니다: 경험을 userId로 다시 걸러 낸다.
+    const experiences = await this.experiences
+      .find({ _id: { $in: [...byExperience.keys()].map((k) => new Types.ObjectId(k)) }, userId })
+      .select('title')
+      .sort({ updatedAt: -1, _id: -1 })
+      .lean<(Pick<Experience, 'title'> & { _id: Types.ObjectId })[]>();
+    return experiences.map((exp) => ({
+      id: String(exp._id),
+      title: exp.title,
+      facts: byExperience.get(String(exp._id)) ?? [],
+    }));
+  }
+
+  // 없는 문항·잘못된 문항 id는 자소서와 같은 404로 돌린다(R1).
+  private findItem(owned: CoverLetterRecord, itemId: string): ItemRecord {
+    const oid = parseObjectIdOr404(itemId);
+    const item = (owned.items ?? []).find((i) => oid.equals(i._id));
+    if (!item) throw new NotFoundException({ code: 'NOT_FOUND', message: '찾을 수 없습니다.' });
+    return item;
+  }
 
   // 붙여넣은 자소서는 문항·우대사항이 없다(api.md 7절): items []·target null로 고정한다.
   async createPasted(userId: string, input: CreateCoverLetterInput): Promise<CoverLetterDto> {

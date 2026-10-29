@@ -116,6 +116,8 @@ describe('C7-1 /api/cover-letters create·list·patch', () => {
   afterEach(async () => {
     await connection.collection('users').deleteMany({});
     await connection.collection('coverLetters').deleteMany({});
+    await connection.collection('experiences').deleteMany({});
+    await connection.collection('facts').deleteMany({});
   });
 
   afterAll(async () => {
@@ -335,6 +337,146 @@ describe('C7-1 /api/cover-letters create·list·patch', () => {
     expectValidation(await generate(a.token, body), field);
     expect(await connection.collection('coverLetters').countDocuments()).toBe(0);
     expect(fake.calls).toHaveLength(0);
+  });
+
+  // 추천 테스트용 경험·사실은 컬렉션에 바로 넣는다: 이 주장은 경험 API가 아니라 추천 입력·필터를 검사한다.
+  async function insertExperience(userId: string, title: string): Promise<string> {
+    const now = new Date();
+    const res = await connection.collection('experiences').insertOne({
+      userId: new Types.ObjectId(userId),
+      title,
+      period: '2025',
+      itemStatus: { situation: null, role: null, action: null, result: null, meaning: null },
+      createdAt: now,
+      updatedAt: now,
+    });
+    return String(res.insertedId);
+  }
+
+  async function insertFact(userId: string, expId: string, text: string, status: 'confirmed' | 'candidate') {
+    await connection.collection('facts').insertOne({
+      experienceId: new Types.ObjectId(expId),
+      userId: new Types.ObjectId(userId),
+      item: 'action',
+      text,
+      status,
+      source: status === 'confirmed' ? 'said' : 'ai_unverified',
+      clueId: null,
+      origin: 'manual',
+      createdAt: new Date(),
+    });
+  }
+
+  const recommend = (token: string, id: string, itemId: string) =>
+    http()
+      .post(`/api/cover-letters/${id}/items/${itemId}/recommendations`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({});
+
+  async function generated(token: string): Promise<{ id: string; itemId: string }> {
+    const res = await generate(token, {
+      preferred: '대규모 행사 운영 경험 우대',
+      talent: '끝까지 책임지는 사람',
+      questions: ['협업으로 문제를 해결한 경험을 쓰시오'],
+    });
+    expect(res.status).toBe(201);
+    const cl = (res.body as { coverLetter: CoverLetterBody }).coverLetter;
+    return { id: cl.id, itemId: (cl.items as ItemBody[])[0].id };
+  }
+
+  const savedItem = async (token: string, id: string): Promise<ItemBody> =>
+    ((await list(token)).find((c) => c.id === id)!.items as ItemBody[])[0];
+
+  // 추천은 확정 사실이 있는 내 카드에서만 나와야 한다(C1·R1): 후보만 있는 카드·남의 카드·AI가 지어낸 id가 섞이면 근거 없는 자소서가 된다.
+  it('POST .../recommendations sends only my confirmed cards to AI and drops ids outside that set', async () => {
+    const e1 = await insertExperience(a.userId, '축제 운영');
+    await insertFact(a.userId, e1, '부스 동선을 다시 짰다', 'confirmed');
+    await insertFact(a.userId, e1, '대기 시간이 절반으로 줄었다', 'candidate');
+    const e2 = await insertExperience(a.userId, '후보만 있는 동아리');
+    await insertFact(a.userId, e2, '동아리 회장을 맡았다', 'candidate');
+    const e3 = await insertExperience(b.userId, 'B의 인턴');
+    await insertFact(b.userId, e3, 'B가 확정한 사실', 'confirmed');
+    const { id, itemId } = await generated(a.token);
+    const ghost = '0123456789abcdef01234567';
+
+    fake.queue('cover-letter-recommend', {
+      recommendations: [
+        { experienceId: e1, reason: '행사 운영 경험이 우대사항과 맞아요' },
+        { experienceId: e2, reason: 'x' },
+        { experienceId: e3, reason: 'y' },
+        { experienceId: ghost, reason: 'z' },
+        { experienceId: 'bad', reason: 'w' },
+      ],
+    });
+    const res = await recommend(a.token, id, itemId);
+
+    expect(res.status).toBe(200);
+    expect(Object.keys(res.body as object)).toEqual(['item']);
+    const item = (res.body as { item: ItemBody }).item;
+    expect(item.id).toBe(itemId);
+    expect(item.recommendations).toEqual([{ experienceId: e1, reason: '행사 운영 경험이 우대사항과 맞아요' }]);
+    // 추천은 응답을 만들지 않는다(C4).
+    expect(item.answer).toBeNull();
+    expect(item.answerEdited).toBe(false);
+    expect((await savedItem(a.token, id)).recommendations).toEqual(item.recommendations);
+
+    expect(fake.calls).toHaveLength(1);
+    const input = fake.calls[0].user;
+    const present = [e1, '축제 운영', '부스 동선을 다시 짰다', '대규모 행사 운영 경험 우대', '끝까지 책임지는 사람', '협업으로 문제를 해결한 경험을 쓰시오'];
+    for (const text of present) expect(input).toContain(text);
+    const absent = [e2, e3, '후보만 있는 동아리', '동아리 회장을 맡았다', '대기 시간이 절반으로 줄었다', 'B가 확정한 사실'];
+    for (const text of absent) expect(input).not.toContain(text);
+  });
+
+  // 고를 카드가 없으면 추천 비용을 쓸 이유가 없다: AI 전에 400으로 알려 경험 정리로 안내한다(api.md 7절).
+  it('POST .../recommendations returns 400 NO_CONFIRMED_FACTS without calling AI when I have no confirmed cards', async () => {
+    const e1 = await insertExperience(a.userId, '후보만');
+    await insertFact(a.userId, e1, '후보 문장', 'candidate');
+    const e3 = await insertExperience(b.userId, 'B 것');
+    await insertFact(b.userId, e3, 'B 확정', 'confirmed');
+    const { id, itemId } = await generated(a.token);
+
+    const res = await recommend(a.token, id, itemId);
+    expect(res.status).toBe(400);
+    expect((res.body as ErrorBody).error.code).toBe('NO_CONFIRMED_FACTS');
+    expect(fake.calls).toHaveLength(0);
+    expect((await savedItem(a.token, id)).recommendations).toEqual([]);
+  });
+
+  // AI가 실패하거나 스키마 밖을 돌려주면 이전 추천을 지켜야 한다(C2): 반쯤 바뀐 추천은 사용자를 헷갈리게 한다.
+  it('POST .../recommendations returns 502 and keeps the item when AI fails or returns an off-schema reply', async () => {
+    const e1 = await insertExperience(a.userId, '축제 운영');
+    await insertFact(a.userId, e1, '부스 동선을 다시 짰다', 'confirmed');
+    const { id, itemId } = await generated(a.token);
+
+    fake.fail('cover-letter-recommend');
+    const r1 = await recommend(a.token, id, itemId);
+    expect(r1.status).toBe(502);
+    expect((r1.body as ErrorBody).error.code).toBe('AI_UNAVAILABLE');
+    expect((await savedItem(a.token, id)).recommendations).toEqual([]);
+
+    fake.queue('cover-letter-recommend', { recommendations: [{ experienceId: e1, reason: '첫 추천' }] });
+    expect((await recommend(a.token, id, itemId)).status).toBe(200);
+
+    fake.queue('cover-letter-recommend', { recommendations: [{ experienceId: e1 }] });
+    const r2 = await recommend(a.token, id, itemId);
+    expect(r2.status).toBe(502);
+    expect((await savedItem(a.token, id)).recommendations).toEqual([{ experienceId: e1, reason: '첫 추천' }]);
+  });
+
+  // 남의 자소서·없는 문항·잘못된 id를 같은 404로 돌려 존재 여부가 새지 않게 하고, AI 비용도 쓰지 않는다(R1).
+  it('POST .../recommendations 404s for others, missing items and malformed ids without calling AI', async () => {
+    const e1 = await insertExperience(b.userId, 'B 카드');
+    await insertFact(b.userId, e1, 'B 확정', 'confirmed');
+    const { id, itemId } = await generated(a.token);
+
+    expectNotFound(await recommend(b.token, id, itemId));
+    expectNotFound(await recommend(a.token, id, '0123456789abcdef01234567'));
+    expectNotFound(await recommend(a.token, id, 'bad'));
+    expectNotFound(await recommend(a.token, 'bad', itemId));
+    expectNotFound(await recommend(a.token, '0123456789abcdef01234567', itemId));
+    expect(fake.calls).toHaveLength(0);
+    expect((await http().post(`/api/cover-letters/${id}/items/${itemId}/recommendations`)).status).toBe(401);
   });
 
   // 로그인 전에는 기능을 쓸 수 없다(C3).

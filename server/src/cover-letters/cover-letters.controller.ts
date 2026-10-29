@@ -1,6 +1,6 @@
 import { Body, Controller, Get, HttpCode, HttpStatus, Param, Patch, Post } from '@nestjs/common';
 import { AuthUser, CurrentUser } from '../auth/current-user.decorator';
-import { CoverLetterDto } from './cover-letter.dto';
+import { CoverLetterDto, CoverLetterItemDto } from './cover-letter.dto';
 import {
   validateCreateCoverLetter,
   validateGenerateCoverLetter,
@@ -45,5 +45,16 @@ export class CoverLettersController {
     @Body() body: unknown,
   ): Promise<{ coverLetter: CoverLetterDto }> {
     return { coverLetter: await this.service.update(user.id, id, validateUpdateCoverLetter(body)) };
+  }
+
+  // 문항별 카드 추천(R8). 새 자원을 만들지 않고 문항의 추천만 바꾸므로 201이 아니라 200이다(api.md 7절).
+  @Post(':id/items/:itemId/recommendations')
+  @HttpCode(HttpStatus.OK)
+  async recommend(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Param('itemId') itemId: string,
+  ): Promise<{ item: CoverLetterItemDto }> {
+    return { item: await this.service.recommend(user.id, id, itemId) };
   }
 }
