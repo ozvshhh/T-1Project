@@ -76,6 +76,20 @@ describe('NestJS 면접 모듈', () => {
     expect(dup.body.code).toBe('conflict');
   });
 
+  it('GET /api/interviews는 내 면접 기록만 준다', async () => {
+    await as('u4').post('/api/interviews').send({ resume: RESUME });
+    await as('u4').post('/api/interviews').send({ resume: RESUME });
+    const res = await as('u4').get('/api/interviews');
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(2);
+    expect(res.body.every((x: { status: string }) => x.status === 'in_progress')).toBe(true);
+  });
+
+  it('자기소개서 저장소가 없을 때 coverLetterId로 시작하면 400', async () => {
+    const res = await as('u5').post('/api/interviews').send({ coverLetterId: 'cl-1' });
+    expect(res.status).toBe(400);
+  });
+
   it('끝나기 전 결과 요청은 409', async () => {
     const start = await as('u3').post('/api/interviews').send({ resume: RESUME });
     expect((await as('u3').get(`/api/interviews/${start.body.sessionId}/result`)).status).toBe(409);

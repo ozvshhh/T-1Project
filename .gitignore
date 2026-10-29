@@ -33,3 +33,7 @@ e2e/node_modules/
 
 # 진행 안내 키트(팀 기획·구현 아님)
 docs/loopthon-starter/
+
+# 백엔드 랄프 루프 로그
+server/ralph/logs/
+server/ralph/BLOCKED.md
