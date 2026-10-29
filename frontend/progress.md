@@ -27,3 +27,5 @@
   남은 일: 9번 D 경험 목록·E 경험 등록. 막힌 점 없음(lint 경고는 기존 useLoad.ts 것).
 - [9] Experiences(D)·ExperienceNew(E) 신설, App에 /experiences·/experiences/new 연결, Experiences.test.tsx 추가(업로드 실패 시 navigate state clueFailed 전달).
   남은 일: 10번 F 경험 상세(clueFailed 안내 표시 포함). 막힌 점 없음(lint 경고는 기존 useLoad.ts 것).
+- [10] ExperienceDetail(F) 신설: 제목·시기 수정, 단서 목록·추가, 대화(자동 시작·보내기·다시 시도), 항목 상태, returnTo, App 라우트 연결, ExperienceDetail.test.tsx 추가.
+  막힌 점: 기존 Experiences.test.tsx의 "대화 시작 → 없는 페이지예요" 테스트가 이제 실패함(그 주석이 10번에서 바뀐다고 적음). 규칙상 고치지 않았으니 사람이 상세 화면 확인으로 바꿔야 함. 남은 일: 11번.

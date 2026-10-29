@@ -14,7 +14,7 @@
 - [x] 7. A 소개·B 가입·로그인 (specs/01-auth.md, 시나리오 S1).
 - [x] 8. C 홈 잠금·목록 (specs/02-home.md, S1·S3). S1 흐름 테스트: 소개 → `가입하기` → 가입 → 잠금 안내와 `경험 등록`.
 - [x] 9. D 경험 목록·E 경험 등록 (specs/03-experiences.md).
-- [ ] 10. F 경험 상세 — 위 영역·대화·항목 상태 (specs/04-experience-detail.md, S4).
+- [x] 10. F 경험 상세 — 위 영역·대화·항목 상태 (specs/04-experience-detail.md, S4).
 - [ ] 11. F 경험 상세 — 사실 후보 확정·경험 카드·직접 추가 (specs/04-experience-detail.md, S2). S2 흐름 테스트: 가입 → `경험 등록` → 등록 → `직접 추가` → `카드에 추가` → `자소서` 메뉴에서 `새로 쓰기`가 보임.
 - [ ] 12. G 붙여넣기 (specs/05-cover-letters.md, S3). S3 흐름 테스트.
 - [ ] 13. H 작성 시작 (specs/05-cover-letters.md).
