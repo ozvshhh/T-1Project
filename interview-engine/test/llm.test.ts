@@ -34,6 +34,16 @@ describe('GatewayLlmClient', () => {
     expect(body.response_format.json_schema.schema.properties.decision).toBeTruthy();
   });
 
+  it('추론 강도를 정하면 reasoning.effort로 보내고, 안 정하면 보내지 않는다', async () => {
+    const a = fakeFetch(200, ok(JSON.stringify(nextMain())));
+    await new GatewayLlmClient({ model: 'm', apiKey: 'k', fetchImpl: a.impl, reasoningEffort: 'low' }).json(req);
+    expect(JSON.parse(a.calls[0]!.init.body as string).reasoning).toEqual({ effort: 'low', exclude: true });
+
+    const b = fakeFetch(200, ok(JSON.stringify(nextMain())));
+    await new GatewayLlmClient({ model: 'm', apiKey: 'k', fetchImpl: b.impl }).json(req);
+    expect(JSON.parse(b.calls[0]!.init.body as string).reasoning).toBeUndefined();
+  });
+
   it('코드 블록으로 감싼 JSON도 읽는다', async () => {
     const { impl } = fakeFetch(200, ok('```json\n' + JSON.stringify(nextMain()) + '\n```'));
     const client = new GatewayLlmClient({ model: 'm', apiKey: 'k', fetchImpl: impl });

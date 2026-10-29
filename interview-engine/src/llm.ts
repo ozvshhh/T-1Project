@@ -52,8 +52,17 @@ export interface GatewayOptions {
   timeoutMs?: number;
   /** response_format의 strict. 모델이 strict 스키마를 거절하면 false로 바꾼다. */
   strictSchema?: boolean;
+  /**
+   * 추론(생각) 강도. 모델 목록의 reasoning_options에 있는 값만 쓴다.
+   * 추론 토큰은 출력 토큰으로 청구되고 응답도 느려지므로 면접 진행에는 낮게 둔다.
+   * 비우면 보내지 않는다(모델 기본값).
+   */
+  reasoningEffort?: 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
   fetchImpl?: typeof fetch;
 }
+
+/** 팀이 정한 모델(2026-10-29). Gateway 모델 목록에서 확인한 ID. */
+export const DEFAULT_MODEL = 'openai/gpt-6.1-terra';
 
 export const GATEWAY_BASE_URL = 'https://ai-gateway.vercel.sh/v1';
 
@@ -68,6 +77,7 @@ export class GatewayLlmClient implements LlmClient {
   private readonly baseUrl: string;
   private readonly timeoutMs: number;
   private readonly strict: boolean;
+  private readonly reasoningEffort: GatewayOptions['reasoningEffort'];
   private readonly fetchImpl: typeof fetch;
 
   constructor(opts: GatewayOptions) {
@@ -77,6 +87,7 @@ export class GatewayLlmClient implements LlmClient {
     this.baseUrl = (opts.baseUrl ?? GATEWAY_BASE_URL).replace(/\/+$/, '');
     this.timeoutMs = opts.timeoutMs ?? 30_000;
     this.strict = opts.strictSchema ?? true;
+    this.reasoningEffort = opts.reasoningEffort;
     this.fetchImpl = opts.fetchImpl ?? fetch;
   }
 
@@ -107,6 +118,8 @@ export class GatewayLlmClient implements LlmClient {
             json_schema: { name: req.schemaName, strict: this.strict, schema: jsonSchema },
           },
           max_tokens: req.maxTokens ?? 1200,
+          // 추론 내용은 받지 않는다(exclude). 내부 추론을 끄는 것은 아니다.
+          ...(this.reasoningEffort ? { reasoning: { effort: this.reasoningEffort, exclude: true } } : {}),
         }),
         signal: controller.signal,
       });

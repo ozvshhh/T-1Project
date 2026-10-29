@@ -31,15 +31,16 @@ Agent가 서비스 저장소 루트의 `progress.md`로 복사해 이어 쓴다(
 - 본질문 4개는 고정된 확인 목적을 바탕으로 AI가 자소서에 맞춰 한 번에 생성. RAG는 쓰지 않음
 - 꼬리질문은 본질문당 최대 2개, 전체 최대 12개·12분, 언제든 건너뛰기·종료. 답변에 점수를 매기지 않고 항목별 확인 상태만 기록. 결과 화면에 종합 점수 없음
 - 질문은 TTS로 읽음. 답은 음성·글자 둘 다(음성은 전사 확인·수정 가능)
-- DB: MongoDB
+- 백엔드: NestJS / DB: MongoDB / AI 모델: `openai/gpt-6.1-terra` (Gateway 모델 목록에서 ID 확인, 입력 $1·출력 $5 per 100만 토큰, 추론 강도 기본 low)
 - 자세한 설계: docs/interview-design.md
-- 구현(2026-10-29): `interview-engine/` — 면접 진행 로직 모듈(TypeScript, 서버 프레임워크·DB에 묶이지 않음). 단위 테스트 35개 통과, 타입 검사 통과. 실제 MongoDB 연결·실제 AI Gateway 호출은 아직 확인 안 함(Docker 꺼져 있음, 키·모델 미정)
+- 구현(2026-10-29): `interview-engine/` — 면접 진행 로직(`src/`)과 NestJS 모듈(`nest/`, `/api/interviews`). 단위·API 테스트 42개 통과, 타입 검사 통과. 실제 MongoDB 연결·실제 AI Gateway 호출은 아직 확인 안 함(Docker 꺼져 있음, 키 없음)
 
 ### 합의가 필요한 제안 (팀 합의 전에는 problem.yaml을 고치지 않음)
 
 - 문제 정의 수정안(statement·customer 표현): docs/problem-revision-proposal.md
 - 면접관 수·압박 여부: 2-B 해법 메모의 "삼인 삼색 보이스 페르소나, 꼬리질문 압박"과 이번 설계(2명, 계속 추궁하지 않음)가 다름
 - 아직 안 정함: 음성 전사 방식(브라우저 내장 / Gateway 전사 모델)
+- frontend 브랜치의 docs/develope/backend-guide.md는 DB 후보를 Postgres로, compose에 postgres db를 추가하라고 적고 있음 → NestJS·MongoDB 결정에 맞게 고쳐야 함(가이드 작성자와 맞추기)
 
 ## 1. GitHub 준비
 
