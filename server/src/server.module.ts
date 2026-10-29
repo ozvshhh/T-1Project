@@ -5,6 +5,7 @@ import { AuthModule } from './auth/auth.module';
 import { ChecksModule } from './checks/checks.module';
 import { CoverLettersModule } from './cover-letters/cover-letters.module';
 import { ExperiencesModule } from './experiences/experiences.module';
+import { ResumeModule } from './resume/resume.module';
 import { UsersModule } from './users/users.module';
 
 // 대회 규칙상 DB 주소는 DATABASE_URL에서만 읽는다. 없으면 시드 누락을 숨기지 않도록 기동을 실패시킨다.
@@ -24,6 +25,7 @@ export function mongooseOptionsFromEnv(): MongooseModuleOptions {
     UsersModule,
     AuthModule,
     ExperiencesModule,
+    ResumeModule,
     CoverLettersModule,
     ChecksModule,
     AppModule,

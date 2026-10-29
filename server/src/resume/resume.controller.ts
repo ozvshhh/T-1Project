@@ -1,0 +1,39 @@
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post } from '@nestjs/common';
+import { AuthUser, CurrentUser } from '../auth/current-user.decorator';
+import { ActivityDraftDto, ResumeDto, ResumeService } from './resume.service';
+import { validateCreateDraft, validateUpdateDraft } from './resume.validation';
+
+// 이력서 API(api.md 4절). @Public()이 없으므로 전역 가드가 토큰을 요구하고, 사용자는 토큰에서만 얻는다.
+// 초안 직접 추가·수정·삭제는 AI를 부르지 않으므로 AiService를 주입하지 않는다.
+@Controller('resume')
+export class ResumeController {
+  constructor(private readonly service: ResumeService) {}
+
+  @Get()
+  async get(@CurrentUser() user: AuthUser): Promise<{ resume: ResumeDto }> {
+    return { resume: await this.service.get(user.id) };
+  }
+
+  @Post('drafts')
+  @HttpCode(HttpStatus.CREATED)
+  async addDraft(@CurrentUser() user: AuthUser, @Body() body: unknown): Promise<{ draft: ActivityDraftDto }> {
+    return { draft: await this.service.addDraft(user.id, validateCreateDraft(body)) };
+  }
+
+  // 입력 검증을 DB 조회보다 먼저 한다: 400 여부가 초안 존재와 무관해져 남의 초안이 있는지 떠볼 수 없다.
+  @Patch('drafts/:draftId')
+  async updateDraft(
+    @CurrentUser() user: AuthUser,
+    @Param('draftId') draftId: string,
+    @Body() body: unknown,
+  ): Promise<{ draft: ActivityDraftDto }> {
+    return { draft: await this.service.updateDraft(user.id, draftId, validateUpdateDraft(body)) };
+  }
+
+  // 지운 뒤 돌려줄 자원이 없으므로 204 빈 본문(api.md 4절).
+  @Delete('drafts/:draftId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async deleteDraft(@CurrentUser() user: AuthUser, @Param('draftId') draftId: string): Promise<void> {
+    await this.service.deleteDraft(user.id, draftId);
+  }
+}
