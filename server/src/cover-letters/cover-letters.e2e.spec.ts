@@ -6,6 +6,9 @@ import { Test } from '@nestjs/testing';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import { Connection, Types } from 'mongoose';
 import request from 'supertest';
+import { AiModule } from '../ai/ai.module';
+import { AiService } from '../ai/ai.service';
+import { FakeAiService } from '../ai/fake-ai.service';
 import { AuthModule } from '../auth/auth.module';
 import { AllExceptionsFilter } from '../common/http-exception.filter';
 import { UsersModule } from '../users/users.module';
@@ -35,6 +38,8 @@ describe('C7-1 /api/cover-letters create·list·patch', () => {
   let mongod: MongoMemoryServer;
   let app: INestApplication;
   let connection: Connection;
+  // AI를 부르면 안 되는 API(C7-2)가 실제로 부르지 않았는지 호출 기록으로 확인한다.
+  const fake = new FakeAiService();
   const http = () => request(app.getHttpServer() as Server);
 
   async function signup(email: string): Promise<{ token: string; userId: string }> {
@@ -87,9 +92,13 @@ describe('C7-1 /api/cover-letters create·list·patch', () => {
         MongooseModule.forRoot(mongod.getUri(), { runtimeAdapters: { os } }),
         UsersModule,
         AuthModule,
+        AiModule,
         CoverLettersModule,
       ],
-    }).compile();
+    })
+      .overrideProvider(AiService)
+      .useValue(fake)
+      .compile();
     app = moduleRef.createNestApplication({ logger: false });
     app.setGlobalPrefix('api', { exclude: ['__health'] });
     app.useGlobalFilters(new AllExceptionsFilter());
@@ -99,6 +108,7 @@ describe('C7-1 /api/cover-letters create·list·patch', () => {
   }, 120_000);
 
   beforeEach(async () => {
+    fake.reset();
     a = await signup('a@example.com');
     b = await signup('b@example.com');
   });
@@ -239,8 +249,97 @@ describe('C7-1 /api/cover-letters create·list·patch', () => {
     expect((await list(a.token))[0].title).toBe('내 것');
   });
 
+  const generate = (token: string, body: unknown) =>
+    http().post('/api/cover-letters/generate').set('Authorization', `Bearer ${token}`).send(body as object);
+
+  interface ItemBody {
+    id: string;
+    question: string;
+    answer: string | null;
+    recommendations: unknown[];
+    selectedExperienceIds: unknown[];
+    usedExperienceIds: unknown[];
+    answerEdited: boolean;
+  }
+
+  // 문항별 추천→선택→응답(R8)은 빈 문항에서 출발해야 하고, 응답은 사용자가 .../answer를 부를 때만 생긴다(C4).
+  it('POST /generate returns 201 kind generated with empty items per question and no AI call', async () => {
+    const res = await generate(a.token, {
+      title: 'A',
+      preferred: '우대',
+      talent: '인재',
+      questions: ['문항1', '문항2'],
+    });
+
+    expect(res.status).toBe(201);
+    const body = res.body as { coverLetter: CoverLetterBody };
+    expect(Object.keys(body)).toEqual(['coverLetter']);
+    const cl = body.coverLetter;
+    expect(cl.kind).toBe('generated');
+    expect(cl.title).toBe('A');
+    expect(cl.body).toBeNull();
+    expect(cl.target).toEqual({ preferred: '우대', talent: '인재' });
+    expect(cl.createdAt).toMatch(ISO);
+    const items = cl.items as ItemBody[];
+    expect(items).toHaveLength(2);
+    expect(items.map((i) => i.question)).toEqual(['문항1', '문항2']);
+    for (const item of items) {
+      expect(Object.keys(item).sort()).toEqual(
+        [
+          'answer',
+          'answerEdited',
+          'id',
+          'question',
+          'recommendations',
+          'selectedExperienceIds',
+          'usedExperienceIds',
+        ].sort(),
+      );
+      expect(item.id).toMatch(/^[0-9a-f]{24}$/);
+      expect(item.answer).toBeNull();
+      expect(item.recommendations).toEqual([]);
+      expect(item.selectedExperienceIds).toEqual([]);
+      expect(item.usedExperienceIds).toEqual([]);
+      expect(item.answerEdited).toBe(false);
+    }
+    expect(items[0].id).not.toBe(items[1].id);
+    expect(fake.calls).toHaveLength(0);
+
+    // 만든 자소서는 내 목록에서 이어서 작업할 수 있어야 하고 남에게는 보이지 않는다(R1·R7).
+    expect((await list(a.token)).map((c) => c.id)).toEqual([cl.id]);
+    expect(await list(b.token)).toEqual([]);
+  });
+
+  // 제목은 선택이다(api.md 7절 title?).
+  it('POST /generate without title returns 201 with title null', async () => {
+    const res = await generate(a.token, { preferred: '우대', talent: '인재', questions: ['문항'] });
+    expect(res.status).toBe(201);
+    expect((res.body as { coverLetter: CoverLetterBody }).coverLetter.title).toBeNull();
+  });
+
+  // 우대사항·인재상·문항이 비면 추천·응답 AI 입력이 비어 쓸모없는 자소서가 생기므로 저장 전에 막는다(api.md 7절).
+  const valid = { preferred: '우대', talent: '인재', questions: ['문항'] };
+  it.each([
+    ['empty preferred', { ...valid, preferred: '' }, 'preferred'],
+    ['whitespace preferred', { ...valid, preferred: '   ' }, 'preferred'],
+    ['missing preferred', { talent: '인재', questions: ['문항'] }, 'preferred'],
+    ['empty talent', { ...valid, talent: '' }, 'talent'],
+    ['whitespace talent', { ...valid, talent: ' \n ' }, 'talent'],
+    ['missing talent', { preferred: '우대', questions: ['문항'] }, 'talent'],
+    ['zero questions', { ...valid, questions: [] }, 'questions'],
+    ['missing questions', { preferred: '우대', talent: '인재' }, 'questions'],
+    ['non-array questions', { ...valid, questions: '문항' }, 'questions'],
+    ['blank question', { ...valid, questions: ['문항', '  '] }, 'questions'],
+    ['non-string question', { ...valid, questions: ['문항', 3] }, 'questions'],
+  ])('POST /generate rejects %s with 400 VALIDATION and saves nothing', async (_label, body, field) => {
+    expectValidation(await generate(a.token, body), field);
+    expect(await connection.collection('coverLetters').countDocuments()).toBe(0);
+    expect(fake.calls).toHaveLength(0);
+  });
+
   // 로그인 전에는 기능을 쓸 수 없다(C3).
   it('requires a token on every route', async () => {
+    expect((await http().post('/api/cover-letters/generate').send(valid)).status).toBe(401);
     expect((await http().post('/api/cover-letters').send({ body: 'x' })).status).toBe(401);
     expect((await http().get('/api/cover-letters')).status).toBe(401);
     expect((await http().patch('/api/cover-letters/0123456789abcdef01234567').send({ title: 'x' })).status).toBe(

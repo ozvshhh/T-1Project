@@ -11,7 +11,14 @@ export interface UpdateCoverLetterInput {
   body?: string;
 }
 
-type CoverLetterField = 'title' | 'body';
+export interface GenerateCoverLetterInput {
+  title: string | null;
+  preferred: string;
+  talent: string;
+  questions: string[];
+}
+
+type CoverLetterField = 'title' | 'body' | 'preferred' | 'talent' | 'questions';
 
 interface FieldError {
   field: CoverLetterField;
@@ -22,6 +29,9 @@ export const COVER_LETTER_REASONS = {
   title: '제목은 글자로 입력해 주세요.',
   body: '자기소개서 내용을 입력해 주세요.',
   generatedBody: '생성한 자기소개서는 문항별 응답으로 고쳐 주세요.',
+  preferred: '희망 기업의 우대사항을 입력해 주세요.',
+  talent: '희망 기업의 인재상을 입력해 주세요.',
+  questions: '자기소개서 문항을 1개 이상 입력해 주세요(빈 문항 없이).',
 } as const;
 
 // 프런트가 칸별로 오류를 보여 주도록 field·reason을 담아 400 VALIDATION으로 돌려준다(api.md 1절).
@@ -53,6 +63,36 @@ export function validateCreateCoverLetter(raw: unknown): CreateCoverLetterInput 
   if (body === null) details.push({ field: 'body', reason: COVER_LETTER_REASONS.body });
   if (details.length > 0) throw coverLetterValidationError(details);
   return { title: title.ok ? title.title : null, body: body! };
+}
+
+// 우대사항·인재상·문항은 추천·응답 AI의 입력이라 앞뒤 공백을 걷어 저장하고, 공백만 있으면 빈 값으로 본다.
+function readText(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const t = value.trim();
+  return t === '' ? null : t;
+}
+
+// 문항이 하나라도 비면 그 문항은 추천·응답을 만들 수 없으므로 목록 전체를 거부한다.
+function readQuestions(value: unknown): string[] | null {
+  if (!Array.isArray(value) || value.length === 0) return null;
+  const questions = value.map(readText);
+  return questions.every((q): q is string => q !== null) ? questions : null;
+}
+
+// POST /generate: preferred·talent 필수, questions 1개 이상, title 선택(api.md 7절).
+export function validateGenerateCoverLetter(raw: unknown): GenerateCoverLetterInput {
+  const obj = asObject(raw);
+  const details: FieldError[] = [];
+  const title = readTitle(obj.title);
+  const preferred = readText(obj.preferred);
+  const talent = readText(obj.talent);
+  const questions = readQuestions(obj.questions);
+  if (!title.ok) details.push({ field: 'title', reason: COVER_LETTER_REASONS.title });
+  if (preferred === null) details.push({ field: 'preferred', reason: COVER_LETTER_REASONS.preferred });
+  if (talent === null) details.push({ field: 'talent', reason: COVER_LETTER_REASONS.talent });
+  if (questions === null) details.push({ field: 'questions', reason: COVER_LETTER_REASONS.questions });
+  if (details.length > 0) throw coverLetterValidationError(details);
+  return { title: title.ok ? title.title : null, preferred: preferred!, talent: talent!, questions: questions! };
 }
 
 // PATCH: 보낸 칸만 고친다. 보낸 body가 비었으면 400(빈 글로 덮어쓰지 않는다).

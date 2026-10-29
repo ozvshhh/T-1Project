@@ -8,6 +8,7 @@ import {
   COVER_LETTER_REASONS,
   coverLetterValidationError,
   CreateCoverLetterInput,
+  GenerateCoverLetterInput,
   UpdateCoverLetterInput,
 } from './cover-letter.validation';
 
@@ -26,6 +27,20 @@ export class CoverLettersService {
       body: input.body,
       target: null,
       items: [],
+    });
+    return toCoverLetterDto(created.toObject());
+  }
+
+  // 작성할 자소서는 빈 문항으로만 만든다: 응답은 사용자가 문항별 .../answer를 부를 때만 AI가 만든다(C4).
+  // 그래서 여기서는 AI를 부르지 않고, 문항의 answer·추천·선택은 스키마 기본값(null·[]·false)으로 둔다.
+  async createGenerated(userId: string, input: GenerateCoverLetterInput): Promise<CoverLetterDto> {
+    const created = await this.coverLetters.create({
+      userId: new Types.ObjectId(userId),
+      kind: 'generated',
+      title: input.title,
+      body: null,
+      target: { preferred: input.preferred, talent: input.talent },
+      items: input.questions.map((question) => ({ question })),
     });
     return toCoverLetterDto(created.toObject());
   }
