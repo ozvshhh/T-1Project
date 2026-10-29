@@ -101,7 +101,8 @@ $CLAIM
     exit 5
   fi
   # 사용량 한도·인증 오류는 작업 실패가 아니다. ledger를 건드리지 않고 멈춘다(사람이 나중에 다시 실행).
-  if grep -qiE "usage limit|rate limit|limit reached|out of.*(quota|credits)|429|not logged in|authentication" "$R/logs/$i-$ROLE-$CID.log"; then
+  # 마지막 몇 줄만 본다. 판정 글에 429·인증 같은 단어가 나와도(AI·인증 주장) 멈추지 않도록(2026-10-30 오탐).
+  if tail -n 5 "$R/logs/$i-$ROLE-$CID.log" | grep -qiE "usage limit|hit your limit|limit reached|out of.*(quota|credits)|not logged in|please run /login|invalid api key|rate_limit_error|overloaded_error"; then
     echo "=== 사용량 한도 또는 인증 오류로 보여 멈춥니다. 로그: $R/logs/$i-$ROLE-$CID.log. 한도가 풀리면 같은 명령으로 다시 실행하세요. ==="
     exit 3
   fi
