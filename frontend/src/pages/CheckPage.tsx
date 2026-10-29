@@ -9,6 +9,7 @@ import { ErrorView, Loading } from '@/components/States'
 import { STATUS_INFO, statusKind } from '@/lib/status'
 import { useAiCall } from '@/lib/useAiCall'
 import { useLoad } from '@/lib/useLoad'
+import { CheckCandidates, FixActions } from '@/pages/CheckExtras'
 import NotFound from '@/pages/NotFound'
 
 const JUDGE_LABELS: Record<JudgeResult['id'], string> = {
@@ -114,6 +115,13 @@ function CheckView({ initial }: { initial: Check }) {
           return
         }
         applySentence(res.sentence)
+        setCheck((c) => ({
+          ...c,
+          candidates: [
+            ...c.candidates,
+            ...res.newCandidates.filter((n) => !c.candidates.some((o) => o.id === n.id)),
+          ],
+        }))
         setAnswer('')
       },
     )
@@ -280,10 +288,21 @@ function CheckView({ initial }: { initial: Check }) {
                 ) : (
                   <p className="text-[15px]">모든 문장을 점검했어요.</p>
                 ))}
+
+              {(current.status === 'needs_more' || current.status === 'unknown') && (
+                <FixActions key={current.id} check={check} sentence={current} />
+              )}
             </section>
           </StageBlock>
         )}
       </div>
+
+      <CheckCandidates
+        check={check}
+        onResolved={(factId) =>
+          setCheck((c) => ({ ...c, candidates: c.candidates.filter((f) => f.id !== factId) }))
+        }
+      />
     </main>
   )
 }
