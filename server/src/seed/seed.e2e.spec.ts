@@ -14,6 +14,7 @@ import { ChecksModule } from '../checks/checks.module';
 import { AllExceptionsFilter } from '../common/http-exception.filter';
 import { CoverLettersModule } from '../cover-letters/cover-letters.module';
 import { ExperiencesModule } from '../experiences/experiences.module';
+import { ResumeModule } from '../resume/resume.module';
 import { SeedService } from '../users/seed.service';
 import { UsersModule } from '../users/users.module';
 
@@ -48,6 +49,28 @@ const COVER_LETTER = {
   title: '가나다소프트 백엔드 지원',
   body: '저는 캡스톤디자인에서 학과 공지 알림 앱을 개발하며 데이터 기반으로 문제를 해결했습니다. 공지 크롤러를 설계해 학생들의 공지 확인율을 40% 높였고, 팀을 주도해 일정 안에 배포를 마쳤습니다. 교내 해커톤에서는 팀장으로서 동아리 회비 정산 서비스를 기획해 수상권에 근접한 성과를 거두었습니다. 이러한 경험을 바탕으로 사용자의 불편을 데이터로 해결하는 백엔드 개발자가 되겠습니다.',
 };
+// 이력서 글(mock-data.md 「이력서 (R2)」 코드블록 4줄). 경험·초안 summary는 이 글의 해당 줄에서 앞의 `- `를 뺀 것이다(명세 10).
+const RESUME_LINES = {
+  capstone: '캡스톤디자인 「학과 공지 알림 앱」 (2025년 1학기, 4인 팀, 백엔드·공지 크롤러 담당)',
+  hackathon: '교내 해커톤 「동아리 회비 정산 웹」 (2025년 여름, 5인 팀 팀장)',
+  club: '프로그래밍 동아리 운영진 (2024년, 스터디 일정 관리)',
+};
+const RESUME_TEXT = [
+  '컴퓨터공학과 4학년(2026년 2월 졸업 예정)',
+  '- 캡스톤디자인 「학과 공지 알림 앱」 (2025년 1학기, 4인 팀, 백엔드·공지 크롤러 담당)',
+  '- 교내 해커톤 「동아리 회비 정산 웹」 (2025년 여름, 5인 팀 팀장)',
+  '- 프로그래밍 동아리 운영진 (2024년, 스터디 일정 관리)',
+].join('\n');
+// 작성한 자소서(mock-data.md 「작성한 자소서」). 문항 1 응답은 frontend/src/mocks/db.ts GENERATED_ANSWER와 글자까지 같아야 화면이 목과 같다.
+const GENERATED_LETTER = {
+  title: '라라테크 백엔드 지원',
+  target: { preferred: 'REST API 설계 경험, 협업 도구 사용 경험', talent: '문제를 끝까지 파고드는 사람' },
+  q1: '직무 관련 경험을 바탕으로 본인의 강점을 서술하시오',
+  q2: '협업 과정에서 갈등을 해결한 경험을 서술하시오',
+  reason: '직접 만든 기능과 결과가 문항과 맞아요',
+};
+const GENERATED_ANSWER =
+  '학과 공지가 홈페이지에만 올라와 학생들이 신청 마감을 자주 놓치는 문제가 있었습니다. 저는 4명이 함께한 캡스톤디자인에서 백엔드와 공지 크롤러를 맡아, 공지 게시판을 10분마다 확인해 새 글이 올라오면 앱 푸시를 보내는 크롤러를 직접 만들었습니다. 학과 단톡방에 공유해 한 학기 동안 시험 운영했고, 공지를 놓쳤다는 말이 줄었다는 반응을 들었습니다. 해커톤에서는 5명 팀의 팀장으로 기능 범위를 정하고, 회비 입금 내역을 엑셀로 받아 정산 화면에 올리는 기능을 만들어 48시간 안에 시연까지 마쳤습니다.';
 // 대화 질문은 mock-data.md 「AI 고정 동작 › 경험 대화」의 질문 순서, 답은 확정 사실 문장(명세 09 기본: 질문 5·답 4).
 const QUESTIONS = [
   '이 경험에서 해결하려던 문제는 무엇이었나요?',
@@ -69,6 +92,7 @@ interface ExperienceBody {
   id: string;
   title: string;
   period: string;
+  summary: string;
   clues: { type: string; text: string | null; description: string | null; fileName: string | null }[];
   itemStatus: Record<string, string | null>;
   card: Record<string, FactBody[]>;
@@ -120,6 +144,7 @@ describe('C9-1 seed data on empty DB', () => {
         ExperiencesModule,
         CoverLettersModule,
         ChecksModule,
+        ResumeModule,
       ],
     })
       .overrideProvider(AiService)
@@ -235,15 +260,93 @@ describe('C9-1 seed data on empty DB', () => {
     expect(conv2.messages).toEqual([]);
   });
 
-  it('GET /api/cover-letters returns the one pasted cover letter with the exact body and no checks', async () => {
+  // 명세 10이 시드를 자소서 2개로 늘렸다: 개수는 2, 붙여넣은 자소서 본문·점검 없음 단언(09)은 그대로 둔다.
+  it('GET /api/cover-letters returns the pasted cover letter with the exact body and no checks', async () => {
     const res = await get('/api/cover-letters');
     const list = (res.body as { coverLetters: { id: string; kind: string; title: string; body: string; items: unknown[] }[] })
       .coverLetters;
-    expect(list).toHaveLength(1);
+    expect(list).toHaveLength(2);
     expect(list[0]).toMatchObject({ kind: 'pasted', title: COVER_LETTER.title, body: COVER_LETTER.body, items: [] });
 
     const checks = (await get(`/api/cover-letters/${list[0].id}/checks`)).body as { checks: unknown[] };
     expect(checks.checks).toEqual([]);
+  });
+
+  // 시연 영상과 S1·S2는 시드 이력서의 「확정 전 활동」 하나를 그대로 보여 주므로 글·초안이 mock-data.md와 같아야 한다(명세 10).
+  it('C10-5 GET /api/resume returns the seed resume text and the one remaining draft', async () => {
+    const { resume } = (await get('/api/resume')).body as {
+      resume: {
+        text: string | null;
+        drafts: { id: unknown; title: string; period: string; summary: string; origin: string }[];
+        updatedAt: string | null;
+      };
+    };
+    expect(resume.text).toBe(RESUME_TEXT);
+    expect(resume.updatedAt).not.toBeNull();
+    expect(resume.drafts).toHaveLength(1);
+    expect(typeof resume.drafts[0].id).toBe('string');
+    expect(resume.drafts[0]).toMatchObject({
+      title: '프로그래밍 동아리 운영진',
+      period: '2024년',
+      summary: RESUME_LINES.club,
+      origin: 'ai',
+    });
+  });
+
+  // 목록 순서와 summary가 목과 같아야 프런트 목으로 만든 화면·E2E가 실제 서버에서도 같은 자리를 짚는다.
+  it('C10-5 GET /api/experiences lists experience 1 then 2, each with its resume line as summary', async () => {
+    const list = await experiences();
+    expect(list.map((e) => e.title)).toEqual([EXP1.title, EXP2.title]);
+    expect(list[0].summary).toBe(RESUME_LINES.capstone);
+    expect(list[1].summary).toBe(RESUME_LINES.hackathon);
+  });
+
+  // 문항별 작성·자소서 상세 화면은 AI 없이 바로 보여야 한다: 응답·근거 카드를 시드가 직접 넣는다(AI 미호출).
+  it('C10-5 cover letters list pasted then generated, and the generated detail matches the mock', async () => {
+    const list = ((await get('/api/cover-letters')).body as { coverLetters: { id: string; kind: string; title: string }[] })
+      .coverLetters;
+    expect(list.map((c) => ({ title: c.title, kind: c.kind }))).toEqual([
+      { title: COVER_LETTER.title, kind: 'pasted' },
+      { title: GENERATED_LETTER.title, kind: 'generated' },
+    ]);
+
+    const exps = await experiences();
+    const e1 = byTitle(exps, EXP1.title);
+    const e2 = byTitle(exps, EXP2.title);
+    const detail = (await get(`/api/cover-letters/${list[1].id}`)).body as {
+      coverLetter: {
+        target: { preferred: string; talent: string } | null;
+        items: {
+          question: string;
+          recommendations: { experienceId: string; reason: string }[];
+          selectedExperienceIds: string[];
+          answer: string | null;
+          usedExperienceIds: string[];
+          answerEdited: boolean;
+        }[];
+      };
+      experiences: { id: string }[];
+    };
+    expect(detail.coverLetter.target).toEqual(GENERATED_LETTER.target);
+    expect(detail.coverLetter.items).toHaveLength(2);
+    const [item1, item2] = detail.coverLetter.items;
+    expect(item1.question).toBe(GENERATED_LETTER.q1);
+    expect(item1.answer).toBe(GENERATED_ANSWER);
+    expect(item1.usedExperienceIds).toEqual([e1.id, e2.id]);
+    expect(item1.selectedExperienceIds).toEqual([e1.id, e2.id]);
+    expect(item1.recommendations).toEqual([
+      { experienceId: e1.id, reason: GENERATED_LETTER.reason },
+      { experienceId: e2.id, reason: GENERATED_LETTER.reason },
+    ]);
+    expect(item1.answerEdited).toBe(false);
+    expect(new Set(detail.experiences.map((e) => e.id))).toEqual(new Set([e1.id, e2.id]));
+    expect(item2).toMatchObject({
+      question: GENERATED_LETTER.q2,
+      answer: null,
+      recommendations: [],
+      selectedExperienceIds: [],
+      usedExperienceIds: [],
+    });
   });
 
   // 컨테이너가 재기동돼도 시드가 다시 쌓이면 목록이 늘어 E2E 흐름이 틀어진다.
@@ -263,6 +366,9 @@ describe('C9-1 seed data on empty DB', () => {
     expect(await connection.collection('facts').countDocuments()).toBe(8);
     expect(await connection.collection('clues').countDocuments()).toBe(1);
     const letters = (await get('/api/cover-letters')).body as { coverLetters: unknown[] };
-    expect(letters.coverLetters).toHaveLength(1);
+    expect(letters.coverLetters).toHaveLength(2);
+    expect(await connection.collection('resumes').countDocuments()).toBe(1);
+    const { resume } = (await get('/api/resume')).body as { resume: { drafts: unknown[] } };
+    expect(resume.drafts).toHaveLength(1);
   });
 });

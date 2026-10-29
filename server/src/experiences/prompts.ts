@@ -33,6 +33,7 @@ export type ConversationAnswerResult = z.infer<typeof conversationAnswerSchema>;
 export interface ConversationInput {
   title: string;
   period: string;
+  summary: string;
   clues: { type: string; description: string | null; text: string | null }[];
   messages: { role: MessageRole; text: string }[];
   itemStatus: Record<Item, ItemStatus>;
@@ -53,9 +54,12 @@ function clueLines(clues: ConversationInput['clues']): string[] {
 export function buildConversationInput(input: ConversationInput): string {
   const clues = clueLines(input.clues);
   const history = input.messages.map((m) => `${m.role === 'ai' ? 'AI' : '사용자'}: ${m.text}`);
+  // 이력서 원문이 있으면 넣어 이미 쓴 내용을 되묻지 않게 하고, 비어 있으면 줄 자체를 빼 내용이 있는 것처럼 보이지 않게 한다(명세 10).
+  const summary = input.summary.trim();
   return [
     `경험 제목: ${input.title}`,
     `시기: ${input.period}`,
+    ...(summary ? [`이력서에서 온 활동 내용: ${summary}`] : []),
     '',
     '단서:',
     ...(clues.length ? clues : ['(없음)']),

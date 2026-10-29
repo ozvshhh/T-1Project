@@ -382,6 +382,26 @@ describe('C10-2 POST /api/resume (AI 활동 나누기)', () => {
     expect((await getResume(b.token)).drafts.map((d) => d.title)).toEqual(['B의 초안']);
   });
 
+  // 실제 Gateway는 이력서의 「」를 제목에 붙이거나 줄 앞 '- '를 summary에 남겼다. 같은 활동이 초안으로 다시 들어오면 안 된다.
+  it('ignores 「」, quotes and spacing when comparing titles, and strips them from saved titles and list markers from summaries', async () => {
+    await insertExperience(a.id, '캡스톤디자인 학과 공지 알림 앱');
+
+    fake.queue('resume-split', {
+      activities: [
+        activity('캡스톤디자인 「학과 공지 알림 앱」', '2025년 1학기', '- 캡스톤디자인 「학과 공지 알림 앱」 (2025년 1학기)'),
+        activity('교내 SW 공모전 「도서관  좌석 예약 봇」', '2024년 2학기', '- 교내 SW 공모전 「도서관 좌석 예약 봇」 (2024년 2학기, 3인 팀)'),
+        activity('교내SW공모전 도서관좌석예약봇', '2024년', '• 중복'),
+      ],
+    });
+
+    const res = await paste(a.token, { text: '이력서 글' });
+    expect(res.status).toBe(200);
+    const body = res.body as { resume: ResumeBody; added: DraftBody[] };
+    expect(body.added.map((d) => [d.title, d.period, d.summary])).toEqual([
+      ['교내 SW 공모전 도서관 좌석 예약 봇', '2024년 2학기', '교내 SW 공모전 「도서관 좌석 예약 봇」 (2024년 2학기, 3인 팀)'],
+    ]);
+  });
+
   // 이력서를 고쳐 다시 붙여넣으면 이미 있는 초안은 그대로 두고 새 활동만 더해야 한다(api.md 4절).
   it('re-pasting replaces text and adds only new activities', async () => {
     fake.queue('resume-split', { activities: [activity('A활동')] }, { activities: [activity('A활동'), activity('B활동')] });

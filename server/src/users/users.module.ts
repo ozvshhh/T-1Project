@@ -5,6 +5,7 @@ import { Clue, ClueSchema } from '../experiences/clue.schema';
 import { Experience, ExperienceSchema } from '../experiences/experience.schema';
 import { Fact, FactSchema } from '../experiences/fact.schema';
 import { Message, MessageSchema } from '../experiences/message.schema';
+import { Resume, ResumeSchema } from '../resume/resume.schema';
 import { SeedDataService } from '../seed/seed-data.service';
 import { SeedService } from './seed.service';
 import { User, UserSchema } from './user.schema';
@@ -20,6 +21,8 @@ import { User, UserSchema } from './user.schema';
       { name: Fact.name, schema: FactSchema },
       { name: Message.name, schema: MessageSchema },
       { name: CoverLetter.name, schema: CoverLetterSchema },
+      // 시드 이력서 글과 남은 초안(명세 10).
+      { name: Resume.name, schema: ResumeSchema },
     ]),
   ],
   providers: [SeedService, SeedDataService],
