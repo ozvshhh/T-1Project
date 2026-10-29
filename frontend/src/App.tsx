@@ -1,8 +1,11 @@
 import { Route, Routes } from 'react-router-dom'
 import { RequireAuth, RequireUnlocked } from '@/components/guards'
 import Layout from '@/components/Layout'
+import CheckPage from '@/pages/CheckPage'
+import CoverLetterDetail from '@/pages/CoverLetterDetail'
 import CoverLetterNew from '@/pages/CoverLetterNew'
 import CoverLetterPaste from '@/pages/CoverLetterPaste'
+import CoverLetterWrite from '@/pages/CoverLetterWrite'
 import AuthPage from '@/pages/AuthPage'
 import ExperienceDetail from '@/pages/ExperienceDetail'
 import ExperienceNew from '@/pages/ExperienceNew'
@@ -27,6 +30,9 @@ export default function App() {
           <Route element={<RequireUnlocked />}>
             <Route path="/cover-letters/paste" element={<CoverLetterPaste />} />
             <Route path="/cover-letters/new" element={<CoverLetterNew />} />
+            <Route path="/cover-letters/:id/items/:itemId" element={<CoverLetterWrite />} />
+            <Route path="/cover-letters/:id" element={<CoverLetterDetail />} />
+            <Route path="/checks/:checkId" element={<CheckPage />} />
           </Route>
         </Route>
         <Route path="*" element={<NotFound />} />

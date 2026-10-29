@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { getDb } from '@/mocks/db'
@@ -28,7 +28,11 @@ describe('경험 상세', () => {
     await user.type(screen.getByLabelText('답변'), '동아리 회비 정산이 엉망이었다')
     await user.click(screen.getByRole('button', { name: '보내기' }))
     expect(await screen.findByText('그때 본인이 맡은 역할은 무엇이었나요?')).toBeInTheDocument()
-    expect(screen.getByText('동아리 회비 정산이 엉망이었다')).toBeInTheDocument()
+    expect(
+      within(screen.getByRole('list', { name: '대화 내용' })).getByText(
+        '동아리 회비 정산이 엉망이었다',
+      ),
+    ).toBeInTheDocument()
     expect(screen.getByText('설명됨')).toBeInTheDocument()
     expect(screen.getByLabelText('답변')).toHaveValue('')
   })
@@ -36,7 +40,7 @@ describe('경험 상세', () => {
   it('AI 실패면 다시 시도가 보이고 답변이 남는다', async () => {
     renderApp(`/experiences/${expId('캡스톤디자인 학과 공지 알림 앱')}`, { loggedIn: true })
     const user = userEvent.setup()
-    await screen.findByText('상황')
+    await screen.findByRole('heading', { name: '상황' })
     server.use(
       http.post('/api/experiences/:id/conversation/answers', () =>
         HttpResponse.json({ error: { code: 'AI_UNAVAILABLE', message: 'x' } }, { status: 502 }),
@@ -57,9 +61,7 @@ describe('경험 상세', () => {
     await user.type(title, '바뀐 제목')
     await user.click(screen.getByRole('button', { name: '저장' }))
     expect(await screen.findByRole('heading', { name: '바뀐 제목' })).toBeInTheDocument()
-    await waitFor(() =>
-      expect(getDb().experiences.some((e) => e.title === '바뀐 제목')).toBe(true),
-    )
+    await waitFor(() => expect(getDb().experiences.some((e) => e.title === '바뀐 제목')).toBe(true))
   })
 
   it('returnTo가 있으면 문항으로 돌아가기가 보인다', async () => {

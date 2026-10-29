@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
@@ -89,14 +89,17 @@ describe('헤더', () => {
 
   it('로그인 후에는 자소서·경험 메뉴와 로그아웃이 보이고, 로그아웃하면 토큰이 지워진다', async () => {
     renderApp('/nope', { loggedIn: true })
-    expect(await screen.findByRole('link', { name: '자소서' })).toHaveAttribute(
+    const header = within(await screen.findByRole('banner'))
+    expect(await header.findByRole('link', { name: '자소서' })).toHaveAttribute(
       'href',
       '/cover-letters',
     )
-    expect(screen.getByRole('link', { name: '경험' })).toHaveAttribute('href', '/experiences')
-    await userEvent.click(screen.getByRole('button', { name: '로그아웃' }))
+    expect(header.getByRole('link', { name: '경험' })).toHaveAttribute('href', '/experiences')
+    await userEvent.click(header.getByRole('button', { name: '로그아웃' }))
     expect(getToken()).toBeNull()
-    expect(await screen.findByRole('link', { name: '로그인' })).toBeInTheDocument()
+    expect(
+      await within(screen.getByRole('banner')).findByRole('link', { name: '로그인' }),
+    ).toBeInTheDocument()
   })
 })
 
@@ -149,7 +152,9 @@ describe('AI 호출 표시', () => {
     expect(screen.getByText('AI가 생각하는 중이에요')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '실행' })).toBeDisabled()
     finish()
-    await waitFor(() => expect(screen.queryByText('AI가 생각하는 중이에요')).not.toBeInTheDocument())
+    await waitFor(() =>
+      expect(screen.queryByText('AI가 생각하는 중이에요')).not.toBeInTheDocument(),
+    )
   })
 })
 

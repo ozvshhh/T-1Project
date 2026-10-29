@@ -35,3 +35,15 @@
   남은 일: 13번 H 작성 시작. 막힌 점: J(15번) 전 이라 저장 뒤 상세 본문 확인은 못 하고 목록 증가로 검사함.
 - [13] CoverLetterNew(H) 신설: 우대사항·인재상·문항 추가/빼기·작성 시작, App에 RequireUnlocked로 /cover-letters/new 연결, CoverLetterNew.test.tsx 추가.
   남은 일: 14번 I 문항별 작성. 막힌 점: I 화면 전이라 작성 시작 뒤 이동은 없는 페이지예요로 검사함(14번에서 그 테스트를 바꿔야 할 수 있음).
+- [14] common·ExperienceDetail(2)·Experiences 테스트의 선택자·기대를 영역 안 검색/경험 상세 확인으로 고침, 전체 vitest 통과.
+  남은 일: 15번 I 문항별 작성. 막힌 점 없음(전체 실행에서 타임아웃성 flake가 가끔 나옴).
+- [15] CoverLetterWrite(I) 신설: 진행 막대·문항 이동, 추천(NO_CONFIRMED_FACTS 안내)·카드 토글·사용 중·사실 보기/보강, 만들기(덮어쓰기 확인창·409), 응답 저장·근거 카드·다음 문항, App 라우트, CoverLetterWrite.test.tsx(S5 포함) 추가.
+  CoverLetterNew.test.tsx의 '없는 페이지예요' 기대를 I 화면 제목 확인으로 바꿈(규칙 6 예외). 남은 일: 16번 J 자소서 상세. 막힌 점 없음.
+- [16] CoverLetterDetail(J) 신설: 붙여넣음 본문 수정·저장, 작성함 문항 응답·근거 카드·보강하기·카드 다시 고르기·이 문항 쓰기, 점검 시작·지난 점검(오래됨), App 라우트, 테스트 추가.
+  남은 일: 17번 K 제출 전 점검(/checks/:checkId 라우트는 아직 없음). 막힌 점 없음.
+- [17] CheckPage(K) 신설: 진행 막대·점검할 문장 목록(누르면 오른쪽에 열기)·자동 start·질문/내 답/판정(J1~J4 충족·빠짐)·남은 추가 질문·답하기·다음 문장·모든 문장 끝 안내·빈 목록, 오래됨 띠·잠금·새 점검 시작(409 CHECK_STALE도 전환), App 라우트, CheckPage.test.tsx(S6 포함) 추가.
+  남은 일: 18번 고치기·경험 대화 바로가기·사실 후보 카드에 저장(답하기 응답의 newCandidates는 아직 화면에 안 씀). 막힌 점 없음.
+- [18] CheckExtras 신설: 끝난 문장의 `자소서에서 고치기`·`관련 경험 대화 이어가기`(근거 카드 하나면 바로, 여럿·붙여넣음이면 목록), `카드에 넣을 사실` 후보(카드에 저장 폼·버리기), newCandidates 반영, CheckExtras.test.tsx 추가.
+  남은 일: 19번 마무리(npm run check). 막힌 점: 기본 워커 수의 전체 vitest는 무관한 테스트가 가끔 타임아웃 flake(--maxWorkers=2면 통과).
+- [19] prettier 서식 정리(서식만), vitest testTimeout/hookTimeout 20초로 올려 부하 flake 제거, npm run check 전체 통과.
+  남은 일: 없음. 막힌 점 없음.
