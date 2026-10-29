@@ -31,8 +31,8 @@ describe('경험 등록', () => {
     await user.type(await screen.findByLabelText('제목'), '새 경험')
     await user.type(screen.getByLabelText('대략적 시기'), '2025년 가을')
     await user.click(screen.getByRole('button', { name: '대화 시작' }))
-    // 경험 상세(F)는 10번 작업이라 아직 없는 주소 화면이 보인다.
-    expect(await screen.findByText('없는 페이지예요')).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: '새 경험' })).toBeInTheDocument()
+    expect(screen.queryByText('없는 페이지예요')).not.toBeInTheDocument()
   })
 
   it('글 단서를 올리고 경험 상세 주소로 간다', async () => {

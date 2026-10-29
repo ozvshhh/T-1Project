@@ -35,3 +35,5 @@
   남은 일: 13번 H 작성 시작. 막힌 점: J(15번) 전 이라 저장 뒤 상세 본문 확인은 못 하고 목록 증가로 검사함.
 - [13] CoverLetterNew(H) 신설: 우대사항·인재상·문항 추가/빼기·작성 시작, App에 RequireUnlocked로 /cover-letters/new 연결, CoverLetterNew.test.tsx 추가.
   남은 일: 14번 I 문항별 작성. 막힌 점: I 화면 전이라 작성 시작 뒤 이동은 없는 페이지예요로 검사함(14번에서 그 테스트를 바꿔야 할 수 있음).
+- [14] common·ExperienceDetail(2)·Experiences 테스트의 선택자·기대를 영역 안 검색/경험 상세 확인으로 고침, 전체 vitest 통과.
+  남은 일: 15번 I 문항별 작성. 막힌 점 없음(전체 실행에서 타임아웃성 flake가 가끔 나옴).
