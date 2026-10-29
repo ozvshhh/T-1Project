@@ -53,6 +53,22 @@ function draftNotFound(): NotFoundException {
   return new NotFoundException({ code: 'NOT_FOUND', message: '찾을 수 없습니다.' });
 }
 
+// 이력서 글의 「」·『』는 제목 표기일 뿐이라 저장할 때 뺀다. 그래야 이미 확정한 경험과 같은 이름으로 보인다.
+function cleanTitle(title: string): string {
+  return title.replace(/[「」『』]/g, '').replace(/\s+/g, ' ').trim();
+}
+
+// 중복 비교용 열쇠. AI가 괄호·따옴표·띄어쓰기를 조금 다르게 옮겨도 같은 활동으로 본다(실제 Gateway에서
+// 「학과 공지 알림 앱」처럼 괄호를 붙여 이미 있는 경험이 초안으로 다시 들어온 적이 있다, 2026-10-30).
+function titleKey(title: string): string {
+  return title.normalize('NFC').replace(/[「」『』"'“”‘’\s]/g, '').toLowerCase();
+}
+
+// 이력서 줄 앞의 목록 기호(-, •, *)는 내용이 아니므로 뺀다(시드 summary와 같은 모양).
+function cleanSummary(summary: string): string {
+  return summary.trim().replace(/^[-•*]\s*/, '').trim();
+}
+
 @Injectable()
 export class ResumeService {
   constructor(
@@ -79,19 +95,19 @@ export class ResumeService {
       this.experiences.find({ userId: owner }, { title: 1 }).lean<{ title: string }[]>(),
       this.resumes.findOne({ userId: owner }, { 'drafts.title': 1 }).lean<{ drafts?: { title: string }[] }>(),
     ]);
-    const seen = new Set([...myExperiences, ...(myResume?.drafts ?? [])].map((x) => x.title.trim()));
+    const seen = new Set([...myExperiences, ...(myResume?.drafts ?? [])].map((x) => titleKey(x.title)));
 
     // AI 응답은 믿지 않는다: 빈 제목과 이미 나온 제목(이번 응답 안 포함)은 서버가 버린다.
     const added: DraftRecord[] = [];
     for (const activity of result.activities) {
-      const title = activity.title.trim();
-      if (title === '' || seen.has(title)) continue;
-      seen.add(title);
+      const title = cleanTitle(activity.title);
+      if (title === '' || seen.has(titleKey(title))) continue;
+      seen.add(titleKey(title));
       added.push({
         _id: new Types.ObjectId(),
         title,
         period: activity.period.trim(),
-        summary: activity.summary.trim(),
+        summary: cleanSummary(activity.summary),
         origin: 'ai',
       });
     }
