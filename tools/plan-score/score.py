@@ -25,7 +25,8 @@ import yaml
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 # 번호 바로 뒤에 한글 조사가 붙어도("S3의") 인용으로 본다.
-CITE_RE = re.compile(r"(?<![A-Za-z0-9])[SE]\d+(?!\d)|가설|추정|\(사례")
+# "초기 목표"로 밝힌 숫자는 팀이 정한 목표라 출처가 필요 없다(2026-10-30 성공 기준).
+CITE_RE = re.compile(r"(?<![A-Za-z0-9])[SE]\d+(?!\d)|가설|추정|\(사례|초기 목표")
 # "흐름 S5"처럼 scenarios.yaml 흐름 번호로 쓴 것은 출처 인용으로 세지 않는다.
 S_RE = re.compile(r"(?<![A-Za-z0-9])(?<!흐름 )S\d+(?!\d)")
 NUM_RE = re.compile(r"\d[\d,.]*\s*(%|명|개사|개|회|시간|분|원|배)")
